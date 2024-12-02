@@ -18,6 +18,15 @@ fn main() {
         }
     };
     println!("Tokens: {:?}", tokens);
+
+    let ast = match parser::create_ast(tokens){
+        Ok(node) => node,
+        Err(e) => {
+            eprintln!("Error parsing text: {}", e);
+            return;
+        }
+    };
+    ast.print(0);
 }
 
 /// fileの読み込み
@@ -109,5 +118,112 @@ pub mod lexical_analyzer {
         }
         tokens.push(Token::EOF);
         return Ok(tokens);
+    }
+}
+
+mod parser {
+    use std::{vec, vec::IntoIter, iter::Peekable};
+    use crate::lexical_analyzer::Token;
+    
+    enum NodeKind {
+        Program,
+        FunctionCall { name: String },
+        Argument{ value: String },
+    }
+
+    pub struct Node {
+        kind: NodeKind,
+        children: Vec<Node>,
+    }
+
+    impl Node {
+        pub fn print(&self, depth: usize) {
+            for _ in 0..depth {
+                print!("  ");
+            }
+            match &self.kind {
+                NodeKind::Program => println!("Program"),
+                NodeKind::FunctionCall { name } => println!("FunctionCall: {}", name),
+                NodeKind::Argument { value } => println!("Argument: {}", value),
+            }
+            for child in &self.children {
+                child.print(depth + 1);
+            }
+        }
+    }
+
+    pub fn create_ast(tokens: Vec<Token>) -> Result<Node, String> {
+        let mut tokens = tokens.into_iter().peekable();
+        match parse_program(&mut tokens) {
+            Ok(node) => Ok(node),
+            Err(e) => Err(e)
+        }
+    }
+
+    fn parse_program(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+        let mut children = Vec::new();
+
+        while let Some(token) = tokens.peek() {
+            match token {
+                Token::Print => {
+                    children.push(
+                        match parse_function_call(tokens) {
+                            Ok(node) => node,
+                            Err(e) => return Err(e)
+                        }
+                    );
+                }
+                Token::EOF => {
+                    tokens.next();
+                    break;
+                }
+                _ => return Err(format!("Unexpected token in program: {:?}", token)),
+            }
+        }
+
+        Ok(Node { 
+            kind: NodeKind::Program, 
+            children: children 
+        })
+    }
+
+    fn parse_function_call(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+        if let Some(Token::Print) = tokens.next() {
+            match tokens.next() {
+                Some(Token::LParen) => {
+                    let argument = match parse_argument(tokens) {
+                        Ok(node) => node,
+                        Err(e) => return Err(e),
+                    };
+
+                    if let Some(Token::RParen) = tokens.next() {
+                        if let Some(Token::Semicolon) = tokens.next() {
+                            Ok(Node {
+                                kind: NodeKind::FunctionCall { name: "print".to_string() },
+                                children: vec![argument],
+                            })
+                        } else {
+                            Err("Expected ';' after function call".to_string())
+                        }
+                    } else {
+                        Err("Expected ')' after arguments".to_string())
+                    }
+                }
+                _ => Err("Expected '(' after function name".to_string()),
+            }
+        } else {
+            Err("Expected function name".to_string())
+        }
+    }
+
+    fn parse_argument(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+        if let Some(Token::String(value)) = tokens.next() {
+            Ok(Node {
+                kind: NodeKind::Argument { value },
+                children: vec![],
+            })
+        } else {
+            Err("Expected argument string".to_string())
+        }
     }
 }
