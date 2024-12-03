@@ -336,13 +336,20 @@ mod parser {
     }
 
     fn parse_argument(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
-        if let Some(Token::String(value)) = tokens.next() {
-            Ok(Node {
+        match tokens.next() {
+            Some(Token::String(value)) => Ok(Node {
                 kind: NodeKind::Argument { value },
                 children: vec![],
-            })
-        } else {
-            Err("Expected argument string".to_string())
+            }),
+            Some(Token::Int(value)) => Ok(Node {
+                kind: NodeKind::Argument { value: value.to_string() },
+                children: vec![],
+            }),
+            Some(Token::Float(value)) => Ok(Node {
+                kind: NodeKind::Argument { value: value.to_string() },
+                children: vec![],
+            }),
+            _ => Err("Expected argument (string, int, or float)".to_string())
         }
     }
 }

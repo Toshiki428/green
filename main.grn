@@ -29,5 +29,5 @@ print("pqr");
 /// print(result); // Outputs: 8
 /// ```
 
-123
-123.45
+print(123);
+print(123.45);
