@@ -72,6 +72,8 @@ pub mod lexical_analyzer {
         RParen,
         Semicolon,
         String(String),
+        Int(i32),
+        Float(f64),
         DocComment(String),
         EOF,
     }
@@ -184,6 +186,40 @@ pub mod lexical_analyzer {
                         return Err(format!("Unknown function: {}", function_name));
                     }
                 },
+                _ if char.is_numeric() => {
+                    let mut number_string = String::new();
+                    let mut is_float = false;
+
+                    while let Some(&c) = chars.peek() {
+                        if c.is_numeric() {
+                            number_string.push(c);
+                            chars.next();
+                        } else if c == '.' {
+                            if is_float {
+                                return Err("Unexpected '.' in number".to_string());
+                            }
+                            is_float = true;
+                            number_string.push(c);
+                            chars.next();
+                        }else {
+                            break;
+                        }
+                    }
+
+                    if is_float {
+                        if let Ok(float_value) = number_string.parse::<f64>() {
+                            tokens.push(Token::Float(float_value));
+                        } else {
+                            return Err(format!("Invalid float number: {}", number_string));
+                        }
+                    } else {
+                        if let Ok(int_value) = number_string.parse::<i32>() {
+                            tokens.push(Token::Int(int_value));
+                        } else {
+                            return Err(format!("Invalid integer number: {}", number_string));
+                        }
+                    }
+                }
                 _ => return Err(format!("Unexpected character: {}", char)),
             }
         }
