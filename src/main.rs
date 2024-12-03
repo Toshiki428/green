@@ -40,10 +40,20 @@ fn main() {
 /// 
 /// - `file_path` - 読み取りたいファイルのpath
 /// 
+/// ## Return
+/// 
+/// - 読み取ったファイルの中身の文字列
+/// 
 /// ## Example
 /// 
 /// ```
-/// let content = load_file_content("example.txt")
+/// let content = match load_file_content(file_path) {
+///     Ok(content) => content,
+///     Err(e) => {
+///         eprintln!("Error reading file: {}", e);
+///         return;
+///     }
+/// };
 /// ```
 fn load_file_content(file_path: &str) -> Result<String> {
     let mut file = File::open(file_path)?;
@@ -72,10 +82,20 @@ pub mod lexical_analyzer {
     /// 
     /// - `text` - トークナイズを行う文字列
     /// 
+    /// ## Return
+    /// 
+    /// - トークン列
+    /// 
     /// ## Example
     /// 
     /// ```
-    /// let token = tokenize(&text)
+    /// let tokens = match lexical_analyzer::tokenize(&content) {
+    ///     Ok(tokens) => tokens,
+    ///     Err(e) => {
+    ///         eprintln!("Error tokenizing text: {}", e);
+    ///         return;
+    ///     }
+    /// };
     /// ```
     pub fn tokenize(text: &str) -> Result<Vec<Token>, String>{
         if text.is_empty() {
@@ -188,6 +208,7 @@ mod parser {
     }
 
     impl Node {
+        /// デバッグ用のprint文
         pub fn print(&self, depth: usize) {
             for _ in 0..depth {
                 print!("  ");
@@ -203,6 +224,27 @@ mod parser {
         }
     }
 
+    /// 構文解析を行う
+    /// 
+    /// ## Argments
+    /// 
+    /// - `tokens` - トークン列
+    /// 
+    /// ## Return
+    /// 
+    /// - 構文解析の結果のAST
+    /// 
+    /// ## Example
+    /// 
+    /// ```
+    /// let ast = match parser::create_ast(tokens){
+    ///     Ok(node) => node,
+    ///     Err(e) => {
+    ///         eprintln!("Error parsing text: {}", e);
+    ///         return;
+    ///     }
+    /// };
+    /// ```
     pub fn create_ast(tokens: Vec<Token>) -> Result<Node, String> {
         let mut tokens = tokens.into_iter().peekable();
         let node = parse_program(&mut tokens)?;
@@ -272,6 +314,24 @@ mod parser {
 mod interpreter {
     use crate::parser::{Node, NodeKind};
 
+    /// プログラムの実行
+    /// 
+    /// ## Argments
+    /// 
+    /// - `node` - ASTのノード
+    /// 
+    /// ## Return
+    /// 
+    /// - 実行結果
+    /// 
+    /// ## Example
+    /// 
+    /// ```
+    /// if let Err(e) = interpreter::execute_ast(&ast) { 
+    ///     eprintln!("Error parsing text: {}", e);
+    ///     return;
+    /// }
+    /// ```
     pub fn execute_ast(node: &Node) -> Result<(), String> {
         match &node.kind {
             NodeKind::Program => {
