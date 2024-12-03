@@ -159,10 +159,8 @@ mod parser {
 
     pub fn create_ast(tokens: Vec<Token>) -> Result<Node, String> {
         let mut tokens = tokens.into_iter().peekable();
-        match parse_program(&mut tokens) {
-            Ok(node) => Ok(node),
-            Err(e) => Err(e)
-        }
+        let node = parse_program(&mut tokens)?;
+        Ok(node)
     }
 
     fn parse_program(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
@@ -171,12 +169,7 @@ mod parser {
         while let Some(token) = tokens.peek() {
             match token {
                 Token::Print => {
-                    children.push(
-                        match parse_function_call(tokens) {
-                            Ok(node) => node,
-                            Err(e) => return Err(e)
-                        }
-                    );
+                    children.push(parse_function_call(tokens)?);
                 }
                 Token::EOF => {
                     tokens.next();
@@ -196,10 +189,7 @@ mod parser {
         if let Some(Token::Print) = tokens.next() {
             match tokens.next() {
                 Some(Token::LParen) => {
-                    let argument = match parse_argument(tokens) {
-                        Ok(node) => node,
-                        Err(e) => return Err(e),
-                    };
+                    let argument = parse_argument(tokens)?;
 
                     if let Some(Token::RParen) = tokens.next() {
                         if let Some(Token::Semicolon) = tokens.next() {
