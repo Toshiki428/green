@@ -29,7 +29,7 @@ fn main() {
     ast.print(0);
 
     if let Err(e) = interpreter::execute_ast(&ast) {
-        eprintln!("Error parsing text: {}", e);
+        eprintln!("Error execute: {}", e);
         return;
     }
 }
@@ -328,7 +328,7 @@ mod interpreter {
     /// 
     /// ```
     /// if let Err(e) = interpreter::execute_ast(&ast) { 
-    ///     eprintln!("Error parsing text: {}", e);
+    ///     eprintln!("Error execute: {}", e);
     ///     return;
     /// }
     /// ```
