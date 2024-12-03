@@ -62,6 +62,7 @@ pub mod lexical_analyzer {
         RParen,
         Semicolon,
         String(String),
+        DocComment(String),
         EOF,
     }
 
@@ -109,11 +110,30 @@ pub mod lexical_analyzer {
                     chars.next();
                     match chars.peek() {
                         Some('/') => {
-                            while let Some(c) = chars.next() {
-                                if c == '\n' {
-                                    break;
+                            chars.next();
+                            match chars.peek() {
+                                Some('/') => {
+                                    chars.next();
+                                    let mut doc_comment = String::new();
+                                    while let Some(c) = chars.next() {
+                                        match c {
+                                            '\n' => { break; }
+                                            '\r' => {},
+                                            _ => { doc_comment.push(c) },
+                                        }
+                                    }
+                                    // 変数や関数を実数したとき実装
+                                    // tokens.push(Token::DocComment(doc_comment));
+                                }
+                                _ => {
+                                    while let Some(c) = chars.next() {
+                                        if c == '\n' {
+                                            break;
+                                        }
+                                    }
                                 }
                             }
+
                         }
                         Some('*') => {
                             chars.next();

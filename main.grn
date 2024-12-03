@@ -11,3 +11,20 @@ print("jkl");
 print("mno");
 print("pqr");
 */
+
+/// Function: add_numbers
+/// 
+/// Adds two numbers and returns the result.
+///
+/// Parameters:
+/// - a: The first number.
+/// - b: The second number.
+///
+/// Returns:
+/// - The sum of `a` and `b`.
+///
+/// Example:
+/// ```grn
+/// let result = add_numbers(3, 5);
+/// print(result); // Outputs: 8
+/// ```
