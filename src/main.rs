@@ -107,13 +107,32 @@ pub mod lexical_analyzer {
                 },
                 '/' => {
                     chars.next();
-                    if let Some('/') = chars.peek() {
-                        while let Some(c) = chars.next() {
-                            if c == '\n' {
-                                break;
+                    match chars.peek() {
+                        Some('/') => {
+                            while let Some(c) = chars.next() {
+                                if c == '\n' {
+                                    break;
+                                }
                             }
                         }
-                    }
+                        Some('*') => {
+                            chars.next();
+                            while let Some(c) = chars.next() {
+                                if c == '*' {
+                                    if let Some('/') = chars.peek() {
+                                        chars.next();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        Some(other) => {
+                            return Err(format!("Unknown syntax: /{}", other));
+                        }
+                        None => {
+                            return Err("Unexpected end of input".to_string()); // 入力が尽きた場合
+                        }
+                    } 
                 }
                 _ if char.is_alphabetic() => {
                     let mut function_name = String::new();

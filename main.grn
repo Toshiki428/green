@@ -2,3 +2,12 @@ print("abc");
 // abc
 print("def");
 // print("ghi");
+
+/* aaa*
+bbb/
+c */
+print("jkl");
+/*
+print("mno");
+print("pqr");
+*/
