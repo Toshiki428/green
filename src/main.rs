@@ -27,6 +27,11 @@ fn main() {
         }
     };
     ast.print(0);
+
+    if let Err(e) = interpreter::execute_ast(&ast) {
+        eprintln!("Error parsing text: {}", e);
+        return;
+    }
 }
 
 /// fileの読み込み
@@ -124,16 +129,16 @@ pub mod lexical_analyzer {
 mod parser {
     use std::{vec, vec::IntoIter, iter::Peekable};
     use crate::lexical_analyzer::Token;
-    
-    enum NodeKind {
+
+    pub enum NodeKind {
         Program,
         FunctionCall { name: String },
         Argument{ value: String },
     }
 
     pub struct Node {
-        kind: NodeKind,
-        children: Vec<Node>,
+        pub kind: NodeKind,
+        pub children: Vec<Node>,
     }
 
     impl Node {
@@ -224,6 +229,39 @@ mod parser {
             })
         } else {
             Err("Expected argument string".to_string())
+        }
+    }
+}
+
+mod interpreter {
+    use crate::parser::{Node, NodeKind};
+
+    pub fn execute_ast(node: &Node) -> Result<(), String> {
+        match &node.kind {
+            NodeKind::Program => {
+                for child in &node.children {
+                    execute_ast(child)?;
+                }
+                Ok(())
+            },
+            NodeKind::FunctionCall { name } => {
+                if name == "print" {
+                    if let Some(argument) = node.children.get(0) {
+                        match &argument.kind {
+                            NodeKind::Argument { value } => {
+                                println!("{}", value);
+                                Ok(())
+                            }
+                            _ => Err("Invalid argument to function 'print'".to_string())
+                        }
+                    } else {
+                        Err("Missing argument to function 'print'".to_string())
+                    }
+                } else {
+                    Err(format!("Unknown function: {}", name))
+                }
+            },
+            _ => Err("Unsupported node type".to_string())
         }
     }
 }
