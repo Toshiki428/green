@@ -1,2 +1,4 @@
 print("abc");
+// abc
 print("def");
+// print("ghi");

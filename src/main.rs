@@ -105,6 +105,16 @@ pub mod lexical_analyzer {
                     }
                     tokens.push(Token::String(string));
                 },
+                '/' => {
+                    chars.next();
+                    if let Some('/') = chars.peek() {
+                        while let Some(c) = chars.next() {
+                            if c == '\n' {
+                                break;
+                            }
+                        }
+                    }
+                }
                 _ if char.is_alphabetic() => {
                     let mut function_name = String::new();
                     while let Some(&c) = chars.peek() {
