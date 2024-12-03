@@ -66,7 +66,6 @@ pub mod lexical_analyzer {
         EOF,
     }
 
-    /// 
     /// トークナイズを行う
     /// 
     /// ## Argments
@@ -127,9 +126,7 @@ pub mod lexical_analyzer {
                                 }
                                 _ => {
                                     while let Some(c) = chars.next() {
-                                        if c == '\n' {
-                                            break;
-                                        }
+                                        if c == '\n' { break; }
                                     }
                                 }
                             }
