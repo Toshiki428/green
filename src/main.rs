@@ -129,9 +129,9 @@ pub mod lexical_analyzer {
                     }
                     tokens.push(Token::String(string));
                 },
-                '+' => { tokens.push(Token::AddAndSubOperator("+".to_string())); chars.next(); }
-                '-' => { tokens.push(Token::AddAndSubOperator("-".to_string())); chars.next(); }
-                '*' => { tokens.push(Token::MulAndDivOperator("*".to_string())); chars.next(); }
+                '+' => { tokens.push(Token::AddAndSubOperator("+".to_string())); chars.next(); },
+                '-' => { tokens.push(Token::AddAndSubOperator("-".to_string())); chars.next(); },
+                '*' => { tokens.push(Token::MulAndDivOperator("*".to_string())); chars.next(); },
                 '/' => {
                     chars.next();
                     match chars.peek() {
@@ -150,15 +150,14 @@ pub mod lexical_analyzer {
                                     }
                                     // 変数や関数を実数したとき実装
                                     // tokens.push(Token::DocComment(doc_comment));
-                                }
+                                },
                                 _ => {
                                     while let Some(c) = chars.next() {
                                         if c == '\n' { break; }
                                     }
-                                }
+                                },
                             }
-
-                        }
+                        },
                         Some('*') => {
                             chars.next();
                             while let Some(c) = chars.next() {
@@ -169,16 +168,16 @@ pub mod lexical_analyzer {
                                     }
                                 }
                             }
-                        }
+                        },
                         Some(_) => {
                            tokens.push(Token::MulAndDivOperator("/".to_string()));
                            chars.next();
-                        }
+                        },
                         None => {
                             return Err("Unexpected end of input".to_string()); // 入力が尽きた場合
-                        }
+                        },
                     } 
-                }
+                },
                 _ if char.is_alphabetic() => {
                     let mut function_name = String::new();
                     while let Some(&c) = chars.peek() {
@@ -207,7 +206,7 @@ pub mod lexical_analyzer {
                             is_float = true;
                             number_string.push(c);
                             chars.next();
-                        }else {
+                        } else {
                             break;
                         }
                     }
@@ -225,7 +224,7 @@ pub mod lexical_analyzer {
                             return Err(format!("Invalid integer number: {}", number_string));
                         }
                     }
-                }
+                },
                 _ => return Err(format!("Unexpected character: {}", char)),
             }
         }
@@ -317,11 +316,11 @@ mod parser {
             match token {
                 Token::Print => {
                     children.push(parse_function_call(tokens)?);
-                }
+                },
                 Token::EOF => {
                     tokens.next();
                     break;
-                }
+                },
                 _ => return Err(format!("Unexpected token in program: {:?}", token)),
             }
         }
@@ -350,7 +349,7 @@ mod parser {
                     } else {
                         Err("Expected ')' after arguments".to_string())
                     }
-                }
+                },
                 _ => Err("Expected '(' after function name".to_string()),
             }
         } else {
@@ -366,15 +365,15 @@ mod parser {
                     kind: NodeKind::Argument,
                     children: vec![string_value],
                 })
-            }
+            },
             Some(Token::Int(_)) | Some(Token::Float(_)) => {
                 let expression_value = parse_expression(tokens)?;
                 Ok(Node {
                     kind: NodeKind::Argument,
                     children: vec![expression_value],
                 })
-            }
-            _ => Err("Expected argument (string, int, or float)".to_string())
+            },
+            _ => Err("Expected argument (string, int, or float)".to_string()),
         }
     }
 
@@ -531,7 +530,7 @@ mod interpreter {
                     Err(format!("Unknown function: {}", name))
                 }
             },
-            _ => Err("Unsupported node type".to_string())
+            _ => Err("Unsupported node type".to_string()),
         }
     }
 
@@ -562,8 +561,8 @@ mod interpreter {
                     } else {
                         Err("Argument node is empty".to_string())
                     }
-                }
-                _ => Err("Invalid argument to function 'print'".to_string())
+                },
+                _ => Err("Invalid argument to function 'print'".to_string()),
             }
         } else {
             Err("Missing argument to function 'print'".to_string())
