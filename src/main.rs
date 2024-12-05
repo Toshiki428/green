@@ -65,7 +65,7 @@ fn load_file_content(file_path: &str) -> Result<String> {
 }
 
 pub mod lexical_analyzer {
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum Token {
         Print,
         LParen,
@@ -74,6 +74,8 @@ pub mod lexical_analyzer {
         String(String),
         Int(i32),
         Float(f64),
+        AddAndSubOperator(String),
+        MulAndDivOperator(String),
         DocComment(String),
         EOF,
     }
@@ -127,6 +129,9 @@ pub mod lexical_analyzer {
                     }
                     tokens.push(Token::String(string));
                 },
+                '+' => { tokens.push(Token::AddAndSubOperator("+".to_string())); chars.next(); }
+                '-' => { tokens.push(Token::AddAndSubOperator("-".to_string())); chars.next(); }
+                '*' => { tokens.push(Token::MulAndDivOperator("*".to_string())); chars.next(); }
                 '/' => {
                     chars.next();
                     match chars.peek() {
@@ -165,8 +170,9 @@ pub mod lexical_analyzer {
                                 }
                             }
                         }
-                        Some(other) => {
-                            return Err(format!("Unknown syntax: /{}", other));
+                        Some(_) => {
+                           tokens.push(Token::MulAndDivOperator("/".to_string()));
+                           chars.next();
                         }
                         None => {
                             return Err("Unexpected end of input".to_string()); // 入力が尽きた場合
@@ -232,12 +238,21 @@ mod parser {
     use std::{vec, vec::IntoIter, iter::Peekable};
     use crate::lexical_analyzer::Token;
 
+    #[derive(Debug)]
     pub enum NodeKind {
         Program,
         FunctionCall { name: String },
-        Argument{ value: String },
+        Argument,
+        String { value: String },
+        Expression,
+        AddAndSub { operator: String },
+        MulAndDiv { operator: String },
+        Primary,
+        Number,
+        Int { value: i32 },
+        Float {value: f64 },
     }
-
+    #[derive(Debug)]
     pub struct Node {
         pub kind: NodeKind,
         pub children: Vec<Node>,
@@ -252,7 +267,15 @@ mod parser {
             match &self.kind {
                 NodeKind::Program => println!("Program"),
                 NodeKind::FunctionCall { name } => println!("FunctionCall: {}", name),
-                NodeKind::Argument { value } => println!("Argument: {}", value),
+                NodeKind::Argument => println!("Argument:"),
+                NodeKind::String { value } => println!("String: {}", value),
+                NodeKind::Expression => println!("Expression:"),
+                NodeKind::AddAndSub { operator } => println!("AddAndSub:{}", operator),
+                NodeKind::MulAndDiv { operator } => println!("MulAndDiv:{}", operator),
+                NodeKind::Primary => println!("Primary:"),
+                NodeKind::Number => println!("Number:"),
+                NodeKind::Int { value } => println!("Int: {}", value),
+                NodeKind::Float { value } => println!("Float: {}", value),
             }
             for child in &self.children {
                 child.print(depth + 1);
@@ -336,20 +359,138 @@ mod parser {
     }
 
     fn parse_argument(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
-        match tokens.next() {
-            Some(Token::String(value)) => Ok(Node {
-                kind: NodeKind::Argument { value },
-                children: vec![],
-            }),
-            Some(Token::Int(value)) => Ok(Node {
-                kind: NodeKind::Argument { value: value.to_string() },
-                children: vec![],
-            }),
-            Some(Token::Float(value)) => Ok(Node {
-                kind: NodeKind::Argument { value: value.to_string() },
-                children: vec![],
-            }),
+        match tokens.peek() {
+            Some(Token::String(_)) => {
+                let string_value = parse_string(tokens)?;
+                Ok(Node {
+                    kind: NodeKind::Argument,
+                    children: vec![string_value],
+                })
+            }
+            Some(Token::Int(_)) | Some(Token::Float(_)) => {
+                let expression_value = parse_expression(tokens)?;
+                Ok(Node {
+                    kind: NodeKind::Argument,
+                    children: vec![expression_value],
+                })
+            }
             _ => Err("Expected argument (string, int, or float)".to_string())
+        }
+    }
+
+    fn parse_string(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+        let token = tokens.next();
+        if let Some(Token::String(value)) = token {
+            Ok(Node {
+                kind: NodeKind::String { value: value },
+                children: vec![],
+            })
+        } else {
+            Err("".to_string())
+        }
+    }
+
+    fn parse_expression(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+        let add_and_sub = parse_add_and_sub(tokens)?;
+        Ok(Node {
+            kind: NodeKind::Expression,
+            children: vec![add_and_sub],
+        })
+    }
+
+    fn parse_add_and_sub(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+        let mut left = parse_mul_and_div(tokens)?;
+
+        while let Some(Token::AddAndSubOperator(operator)) = tokens.peek().cloned() {
+            tokens.next();
+            let right = parse_mul_and_div(tokens)?;
+            left = Node {
+                kind: NodeKind::AddAndSub { operator: operator.to_string() },
+                children: vec![left, right]
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_mul_and_div(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+        let mut left = parse_primary(tokens)?;
+
+        while let Some(Token::MulAndDivOperator(operator)) = tokens.peek().cloned() {
+            tokens.next();
+            let right = parse_primary(tokens)?;
+            left = Node {
+                kind: NodeKind::MulAndDiv { operator: operator.to_string() },
+                children: vec![left, right]
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_primary(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+        match tokens.peek(){
+            Some(Token::Int(_)) | Some(Token::Float(_)) => {
+                let number = parse_number(tokens)?;
+                Ok(Node {
+                    kind: NodeKind::Primary,
+                    children: vec![number],
+                })
+            },
+            Some(Token::LParen) => {
+                tokens.next();
+                let expr = parse_add_and_sub(tokens)?;
+    
+                // 閉じカッコの確認
+                match tokens.next() {
+                    Some(Token::RParen) => Ok(Node {
+                        kind: NodeKind::Primary,
+                        children: vec![expr],
+                    }),
+                    _ => Err("Expected ')' after expression".to_string()),
+                }
+            },
+            _ => { Err("Expected primary expression".to_string()) },
+        }
+    }
+
+    fn parse_number(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+        match tokens.peek(){
+            Some(Token::Int(_)) => {
+                let int_value = parse_int(tokens)?;
+                Ok(Node {
+                    kind: NodeKind::Number,
+                    children: vec![int_value],
+                })
+            },
+            Some(Token::Float(_)) => {
+                let float_value = parse_float(tokens)?;
+                Ok(Node {
+                    kind: NodeKind::Number,
+                    children: vec![float_value],
+                })
+            },
+            _ => { Err("Expected a number".to_string()) },
+        }
+    }
+
+    fn parse_int(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+        if let Some(Token::Int(value)) = tokens.next() {
+            Ok(Node {
+                kind: NodeKind::Int { value: value },
+                children: vec![],
+            })
+        } else {
+            Err("".to_string())
+        }
+    }
+
+    fn parse_float(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+        if let Some(Token::Float(value)) = tokens.next() {
+            Ok(Node {
+                kind: NodeKind::Float { value: value },
+                children: vec![],
+            })
+        } else {
+            Err("".to_string())
         }
     }
 }
@@ -385,22 +526,101 @@ mod interpreter {
             },
             NodeKind::FunctionCall { name } => {
                 if name == "print" {
-                    if let Some(argument) = node.children.get(0) {
-                        match &argument.kind {
-                            NodeKind::Argument { value } => {
-                                println!("{}", value);
-                                Ok(())
-                            }
-                            _ => Err("Invalid argument to function 'print'".to_string())
-                        }
-                    } else {
-                        Err("Missing argument to function 'print'".to_string())
-                    }
+                    print_function(node)
                 } else {
                     Err(format!("Unknown function: {}", name))
                 }
             },
             _ => Err("Unsupported node type".to_string())
+        }
+    }
+
+    fn print_function(node: &Node) -> Result<(), String> {
+        if let Some(argument) = node.children.get(0) {
+            match &argument.kind {
+                NodeKind::Argument => {
+                    if let Some(first_child) = argument.children.get(0){
+                        match &first_child.kind {
+                            NodeKind::String { value } => {
+                                println!("{}", value);
+                                Ok(())
+                            },
+                            NodeKind::Expression => {
+                                if let Some(expression_child) = first_child.children.get(0){
+                                    if let Some(result) = evaluate_expression(expression_child) {
+                                        println!("{}", result);
+                                        Ok(())
+                                    } else {
+                                        Err("Failed to evaluate the numerical expression".to_string())
+                                    }
+                                } else {
+                                    Err("Err".to_string())
+                                }
+                            },
+                            _ => Err("Unsupported argument type in Argument node".to_string()),
+                        }
+                    } else {
+                        Err("Argument node is empty".to_string())
+                    }
+                }
+                _ => Err("Invalid argument to function 'print'".to_string())
+            }
+        } else {
+            Err("Missing argument to function 'print'".to_string())
+        }
+    }
+
+    fn evaluate_expression(node: &Node) -> Option<f64> {
+        match &node.kind {
+            NodeKind::Float { value } => Some( *value as f64 ),
+            NodeKind::Int { value } => Some( *value as f64 ),
+            NodeKind::Number => {
+                let number = node.children.get(0)?;
+                let value = evaluate_expression(number)?;
+                Some(value)
+            },
+            NodeKind::Primary => {
+                let number = node.children.get(0)?;
+                let value = evaluate_expression(number)?;
+                Some(value)
+            },
+            NodeKind::MulAndDiv { operator } => {
+                let left = node.children.get(0)?;
+                let left_value = evaluate_expression(left)?;
+                match operator.as_str() {
+                    "*" => {
+                        let right = node.children.get(1)?;
+                        let right_value = evaluate_expression(right)?;
+                        Some(left_value * right_value)
+                    },
+                    "/" => {
+                        let right = node.children.get(1)?;
+                        let right_value = evaluate_expression(right)?;
+                        Some(left_value / right_value)
+                    },
+                    "" => Some(left_value),
+                    _ => None,
+                }
+            },
+            NodeKind::AddAndSub { operator } => {
+                let left = node.children.get(0)?;
+                let left_value = evaluate_expression(left)?;
+                match operator.as_str() {
+                    "+" => {
+                        let right = node.children.get(1)?;
+                        let right_value = evaluate_expression(right)?;
+                        Some(left_value + right_value)
+                    },
+                    "-" => {
+                        let right = node.children.get(1)?;
+                        let right_value = evaluate_expression(right)?;
+                        Some(left_value - right_value)
+                    },
+                    "" => Some(left_value),
+                    _ => None,
+                }
+            },
+            _ => None,
         }
     }
 }
