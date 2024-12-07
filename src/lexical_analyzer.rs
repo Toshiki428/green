@@ -1,4 +1,4 @@
-use std::{str::Chars, iter::Peekable};
+use std::{iter::Peekable, str::Chars, vec};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -44,7 +44,7 @@ pub fn lex(text: &str) -> Result<Vec<Token>, String> {
 
     while let Some(&char) = chars.peek() {
         match char {
-            ' ' | '\n' | '\r' => { chars.next(); },  // 無視
+            ' ' | '\n' | '\r' | '\t' => { chars.next(); },  // 無視
             '(' => { tokens.push(Token::LParen); chars.next(); },
             ')' => { tokens.push(Token::RParen); chars.next(); },
             ';' => { tokens.push(Token::Semicolon); chars.next(); },
@@ -202,7 +202,7 @@ fn lex_slash(chars: &mut Peekable<Chars<'_>>) -> Result<Token, String> {
 fn lex_identifier_or_keyword(chars: &mut Peekable<Chars<'_>>) -> Result<Token, String> {
     let mut string = String::new();
     while let Some(&c) = chars.peek() {
-        if !c.is_alphabetic() { break; }
+        if !c.is_alphabetic() && !c.is_numeric() { break; }
         string.push(c);
         chars.next();
     }
@@ -230,20 +230,19 @@ fn lex_identifier_or_keyword(chars: &mut Peekable<Chars<'_>>) -> Result<Token, S
 /// ```
 fn lex_number(chars: &mut Peekable<Chars<'_>>) -> Result<Token, String> {
     let mut number_string = String::new();
-    let mut is_float = false;
 
     while let Some(&c) = chars.peek() {
         if c.is_numeric() {
             number_string.push(c);
             chars.next();
         } else if c == '.' {
-            if is_float {
-                return Err("'.'が2個以上ついている".to_string());
-            }
-            is_float = true;
             number_string.push(c);
             chars.next();
+        } else if vec![' ', ')', '+', '-', '*', '/', '=', '!'].contains(&c) {
+            break;
         } else {
+            number_string.push(c);
+            chars.next();
             break;
         }
     }
