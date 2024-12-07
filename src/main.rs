@@ -68,16 +68,18 @@ pub mod lexical_analyzer {
     #[derive(Debug, Clone)]
     pub enum Token {
         Print,
-        LParen,
-        RParen,
-        Semicolon,
         String(String),
         Int(i32),
         Float(f64),
+        Bool(bool),
         AddAndSubOperator(String),
         MulAndDivOperator(String),
-        DocComment(String),
+        CompareOperator(String),
+        LParen,
+        RParen,
+        Semicolon,
         EOF,
+        DocComment(String),
     }
 
     /// トークナイズを行う
@@ -178,17 +180,32 @@ pub mod lexical_analyzer {
                         },
                     } 
                 },
+                '=' => {
+                    chars.next();
+                    match chars.peek() {
+                        Some('=') => { tokens.push(Token::CompareOperator("==".to_string())); chars.next(); },
+                        _ => { return Err("".to_string()); },
+                    }
+                },
+                '!' => {
+                    chars.next();
+                    match chars.peek() {
+                        Some('=') => { tokens.push(Token::CompareOperator("!=".to_string())); chars.next(); },
+                        _ => { return Err("".to_string()); }
+                    }
+                }
                 _ if char.is_alphabetic() => {
-                    let mut function_name = String::new();
+                    let mut string = String::new();
                     while let Some(&c) = chars.peek() {
                         if !c.is_alphabetic() { break; }
-                        function_name.push(c);
+                        string.push(c);
                         chars.next();
                     }
-                    if function_name == "print" {
-                        tokens.push(Token::Print);
-                    } else {
-                        return Err(format!("Unknown function: {}", function_name));
+                    match string.as_str() {
+                        "print" => { tokens.push(Token::Print); },
+                        "true" => { tokens.push(Token::Bool(true)); },
+                        "false" => { tokens.push(Token::Bool(false)); },
+                        _ => { return Err(format!("Unknown function: {}", string)); },
                     }
                 },
                 _ if char.is_numeric() => {
@@ -250,6 +267,8 @@ mod parser {
         Number,
         Int { value: i32 },
         Float {value: f64 },
+        Compare { operator: String },
+        Bool { value: bool },
     }
     #[derive(Debug)]
     pub struct Node {
@@ -275,6 +294,8 @@ mod parser {
                 NodeKind::Number => println!("Number:"),
                 NodeKind::Int { value } => println!("Int: {}", value),
                 NodeKind::Float { value } => println!("Float: {}", value),
+                NodeKind::Compare { operator } => println!("Compare: {}", operator),
+                NodeKind::Bool { value } => println!("Bool: {}", value),
             }
             for child in &self.children {
                 child.print(depth + 1);
@@ -373,7 +394,14 @@ mod parser {
                     children: vec![expression_value],
                 })
             },
-            _ => Err("Expected argument (string, int, or float)".to_string()),
+            Some(Token::Bool(_)) => {
+                let bool_value = parse_bool(tokens)?;
+                Ok(Node {
+                    kind: NodeKind::Argument,
+                    children: vec![bool_value],
+                })
+            }
+            _ => Err("Expected argument (string, int, float or bool)".to_string()),
         }
     }
 
@@ -390,11 +418,25 @@ mod parser {
     }
 
     fn parse_expression(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
-        let add_and_sub = parse_add_and_sub(tokens)?;
+        let add_and_sub = parse_compare(tokens)?;
         Ok(Node {
             kind: NodeKind::Expression,
             children: vec![add_and_sub],
         })
+    }
+
+    fn parse_compare(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+        let mut left = parse_add_and_sub(tokens)?;
+
+        if let Some(Token::CompareOperator(operator)) = tokens.peek().cloned() {
+            tokens.next();
+            let right = parse_add_and_sub(tokens)?;
+            left = Node {
+                kind: NodeKind::Compare { operator: operator.to_string() },
+                children: vec![left, right]
+            }
+        }
+        Ok(left)
     }
 
     fn parse_add_and_sub(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
@@ -447,6 +489,13 @@ mod parser {
                     _ => Err("Expected ')' after expression".to_string()),
                 }
             },
+            Some(Token::String(_)) => {
+                let string = parse_string(tokens)?;
+                Ok(Node {
+                    kind: NodeKind::Primary,
+                    children: vec![string]
+                })
+            }
             _ => { Err("Expected primary expression".to_string()) },
         }
     }
@@ -492,10 +541,27 @@ mod parser {
             Err("".to_string())
         }
     }
+
+    fn parse_bool(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+        if let Some(Token::Bool(value)) = tokens.next() {
+            Ok(Node {
+                kind: NodeKind::Bool { value: value },
+                children: vec![],
+            })
+        } else {
+            Err("".to_string())
+        }
+    }
 }
 
 mod interpreter {
     use crate::parser::{Node, NodeKind};
+
+    #[derive(Debug)]
+    enum EvaluateExpressionType {
+        Number(f64),
+        Bool(bool),
+    }
 
     /// プログラムの実行
     /// 
@@ -547,7 +613,7 @@ mod interpreter {
                             NodeKind::Expression => {
                                 if let Some(expression_child) = first_child.children.get(0){
                                     if let Some(result) = evaluate_expression(expression_child) {
-                                        println!("{}", result);
+                                        println!("{:?}", result);
                                         Ok(())
                                     } else {
                                         Err("Failed to evaluate the numerical expression".to_string())
@@ -555,6 +621,10 @@ mod interpreter {
                                 } else {
                                     Err("Err".to_string())
                                 }
+                            },
+                            NodeKind::Bool { value } => {
+                                println!("{}", value);
+                                Ok(())
                             },
                             _ => Err("Unsupported argument type in Argument node".to_string()),
                         }
@@ -569,10 +639,10 @@ mod interpreter {
         }
     }
 
-    fn evaluate_expression(node: &Node) -> Option<f64> {
+    fn evaluate_expression(node: &Node) -> Option<EvaluateExpressionType> {
         match &node.kind {
-            NodeKind::Float { value } => Some( *value as f64 ),
-            NodeKind::Int { value } => Some( *value as f64 ),
+            NodeKind::Float { value } => Some( EvaluateExpressionType::Number(*value) ),
+            NodeKind::Int { value } => Some( EvaluateExpressionType::Number( *value as f64 ) ),
             NodeKind::Number => {
                 let number = node.children.get(0)?;
                 let value = evaluate_expression(number)?;
@@ -585,37 +655,87 @@ mod interpreter {
             },
             NodeKind::MulAndDiv { operator } => {
                 let left = node.children.get(0)?;
-                let left_value = evaluate_expression(left)?;
-                match operator.as_str() {
-                    "*" => {
-                        let right = node.children.get(1)?;
-                        let right_value = evaluate_expression(right)?;
-                        Some(left_value * right_value)
+                match evaluate_expression(left) {
+                    Some(EvaluateExpressionType::Number(left_value)) => {
+                        match operator.as_str() {
+                            "*" => {
+                                let right = node.children.get(1)?;
+                                if let EvaluateExpressionType::Number(right_value) = evaluate_expression(right)?{
+                                    return Some(EvaluateExpressionType::Number(left_value * right_value));
+                                } else {
+                                    return None;
+                                }
+                            },
+                            "/" => {
+                                let right = node.children.get(1)?;
+                                if let EvaluateExpressionType::Number(right_value) = evaluate_expression(right)?{
+                                    return Some(EvaluateExpressionType::Number(left_value / right_value));
+                                } else {
+                                    return None;
+                                }
+                            },
+                            "" => Some(EvaluateExpressionType::Number(left_value)),
+                            _ => None,
+                        }
                     },
-                    "/" => {
-                        let right = node.children.get(1)?;
-                        let right_value = evaluate_expression(right)?;
-                        Some(left_value / right_value)
-                    },
-                    "" => Some(left_value),
+                    Some(EvaluateExpressionType::Bool(value)) => Some(EvaluateExpressionType::Bool(value)),
                     _ => None,
                 }
             },
             NodeKind::AddAndSub { operator } => {
                 let left = node.children.get(0)?;
-                let left_value = evaluate_expression(left)?;
-                match operator.as_str() {
-                    "+" => {
-                        let right = node.children.get(1)?;
-                        let right_value = evaluate_expression(right)?;
-                        Some(left_value + right_value)
+                match evaluate_expression(left) {
+                    Some(EvaluateExpressionType::Number(left_value)) => {
+                        match operator.as_str() {
+                            "+" => {
+                                let right = node.children.get(1)?;
+                                if let EvaluateExpressionType::Number(right_value) = evaluate_expression(right)?{
+                                    return Some(EvaluateExpressionType::Number(left_value + right_value));
+                                } else {
+                                    return None;
+                                }
+                            },
+                            "-" => {
+                                let right = node.children.get(1)?;
+                                if let EvaluateExpressionType::Number(right_value) = evaluate_expression(right)?{
+                                    return Some(EvaluateExpressionType::Number(left_value - right_value));
+                                } else {
+                                    return None;
+                                }
+                            },
+                            "" => Some(EvaluateExpressionType::Number(left_value)),
+                            _ => None,
+                        }
                     },
-                    "-" => {
-                        let right = node.children.get(1)?;
-                        let right_value = evaluate_expression(right)?;
-                        Some(left_value - right_value)
-                    },
-                    "" => Some(left_value),
+                    Some(EvaluateExpressionType::Bool(value)) => { return Some(EvaluateExpressionType::Bool(value)); }
+                    _ => { return None; }
+                }
+            }
+            NodeKind::Compare { operator } => {
+                let left = node.children.get(0)?;
+                match evaluate_expression(left) {
+                    Some(EvaluateExpressionType::Number(left_value)) => {
+                        match operator.as_str() {
+                            "==" => {
+                                let right = node.children.get(1)?;
+                                if let EvaluateExpressionType::Number(right_value) = evaluate_expression(right)?{
+                                    return Some(EvaluateExpressionType::Bool(left_value == right_value));
+                                } else {
+                                    return None;
+                                }
+                            },
+                            "!=" => {
+                                let right = node.children.get(1)?;
+                                if let EvaluateExpressionType::Number(right_value) = evaluate_expression(right)?{
+                                    return Some(EvaluateExpressionType::Bool(left_value != right_value));
+                                } else {
+                                    return None;
+                                }
+                            },
+                            "" => Some(EvaluateExpressionType::Number(left_value)),
+                            _ => None,
+                        }
+                    }
                     _ => None,
                 }
             },
