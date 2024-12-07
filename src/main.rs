@@ -26,7 +26,7 @@ fn main() {
     let ast = match parser::create_ast(tokens){
         Ok(node) => node,
         Err(e) => {
-            eprintln!("Error parsing text: {}", e);
+            eprintln!("構文エラー: {}", e);
             return;
         }
     };

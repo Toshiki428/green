@@ -6,15 +6,13 @@ pub enum NodeKind {
     Program,
     FunctionCall { name: String },
     Argument,
-    String { value: String },
     Expression,
+    Compare { operator: String },
     AddAndSub { operator: String },
     MulAndDiv { operator: String },
     Primary,
-    Number,
-    Int { value: i32 },
-    Float {value: f64 },
-    Compare { operator: String },
+    String { value: String },
+    Number {value: f64 },
     Bool { value: bool },
 }
 #[derive(Debug)]
@@ -33,15 +31,13 @@ impl Node {
             NodeKind::Program => println!("Program"),
             NodeKind::FunctionCall { name } => println!("FunctionCall: {}", name),
             NodeKind::Argument => println!("Argument:"),
-            NodeKind::String { value } => println!("String: {}", value),
             NodeKind::Expression => println!("Expression:"),
+            NodeKind::Compare { operator } => println!("Compare: {}", operator),
             NodeKind::AddAndSub { operator } => println!("AddAndSub:{}", operator),
             NodeKind::MulAndDiv { operator } => println!("MulAndDiv:{}", operator),
             NodeKind::Primary => println!("Primary:"),
-            NodeKind::Number => println!("Number:"),
-            NodeKind::Int { value } => println!("Int: {}", value),
-            NodeKind::Float { value } => println!("Float: {}", value),
-            NodeKind::Compare { operator } => println!("Compare: {}", operator),
+            NodeKind::String { value } => println!("String: {}", value),
+            NodeKind::Number { value } => println!("Number: {}", value),
             NodeKind::Bool { value } => println!("Bool: {}", value),
         }
         for child in &self.children {
@@ -58,7 +54,7 @@ impl Node {
 /// 
 /// ## Return
 /// 
-/// - 構文解析の結果のAST
+/// - 構文解析の結果のASTのルートNode
 /// 
 /// ## Example
 /// 
@@ -66,7 +62,7 @@ impl Node {
 /// let ast = match parser::create_ast(tokens){
 ///     Ok(node) => node,
 ///     Err(e) => {
-///         eprintln!("Error parsing text: {}", e);
+///         eprintln!("構文エラー: {}", e);
 ///         return;
 ///     }
 /// };
@@ -77,19 +73,35 @@ pub fn create_ast(tokens: Vec<Token>) -> Result<Node, String> {
     Ok(node)
 }
 
+
+/// ルートの構文解析
+/// 
+/// ## Argments
+/// 
+/// - `tokens` - トークン列
+/// 
+/// ## Return
+/// 
+/// - Node
+/// 
+/// ## Example
+/// 
+/// ```
+/// let node = parse_program(&mut tokens)?;
+/// ```
 fn parse_program(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
     let mut children = Vec::new();
 
     while let Some(token) = tokens.peek() {
         match token {
-            Token::Print => {
+            Token::FunctionName(_) => {
                 children.push(parse_function_call(tokens)?);
             },
             Token::EOF => {
                 tokens.next();
                 break;
             },
-            _ => return Err(format!("Unexpected token in program: {:?}", token)),
+            _ => return Err(format!("想定外のToken(program): {:?}", token)),
         }
     }
 
@@ -99,46 +111,68 @@ fn parse_program(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String>
     })
 }
 
+/// FunctionCallの構文解析
+/// 
+/// ## Argments
+/// 
+/// - `tokens` - トークン列
+/// 
+/// ## Return
+/// 
+/// - Node
+/// 
+/// ## Example
+/// 
+/// ```
+/// let node = parse_function_call(tokens)?;
+/// ```
 fn parse_function_call(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
-    if let Some(Token::Print) = tokens.next() {
-        match tokens.next() {
-            Some(Token::LParen) => {
-                let argument = parse_argument(tokens)?;
-
-                if let Some(Token::RParen) = tokens.next() {
-                    if let Some(Token::Semicolon) = tokens.next() {
-                        Ok(Node {
-                            kind: NodeKind::FunctionCall { name: "print".to_string() },
-                            children: vec![argument],
-                        })
-                    } else {
-                        Err("Expected ';' after function call".to_string())
-                    }
-                } else {
-                    Err("Expected ')' after arguments".to_string())
-                }
-            },
-            _ => Err("Expected '(' after function name".to_string()),
+    if let Some(Token::FunctionName(function_name)) = tokens.next(){
+        if tokens.next() != Some(Token::LParen) {
+            return Err("関数名の後には'('が必要".to_string());
         }
+
+        let argument = parse_argument(tokens)?;
+
+        if tokens.next() != Some(Token::RParen) {
+            return Err("引数の後には')'が必要".to_string());
+        }
+
+        if tokens.next() != Some(Token::Semicolon) {
+            return Err("関数呼び出しの後には';'が必要".to_string());
+        }
+
+        Ok(Node {
+            kind: NodeKind::FunctionCall { name: function_name },
+            children: vec![argument],
+        })
     } else {
-        Err("Expected function name".to_string())
+        Err("想定外の関数呼び出し".to_string())
     }
 }
 
+/// 引数の構文解析
+/// 
+/// ## Argments
+/// 
+/// - `tokens` - トークン列
+/// 
+/// ## Return
+/// 
+/// - Node
+/// 
+/// ## Example
+/// 
+/// ```
+/// let node = parse_argument(tokens)?;
+/// ```
 fn parse_argument(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
     match tokens.peek() {
-        Some(Token::String(_)) => {
-            let string_value = parse_string(tokens)?;
+        Some(Token::String(_)) | Some(Token::Number(_)) => {
+            let expression = parse_expression(tokens)?;
             Ok(Node {
                 kind: NodeKind::Argument,
-                children: vec![string_value],
-            })
-        },
-        Some(Token::Int(_)) | Some(Token::Float(_)) => {
-            let expression_value = parse_expression(tokens)?;
-            Ok(Node {
-                kind: NodeKind::Argument,
-                children: vec![expression_value],
+                children: vec![expression],
             })
         },
         Some(Token::Bool(_)) => {
@@ -148,22 +182,25 @@ fn parse_argument(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String
                 children: vec![bool_value],
             })
         }
-        _ => Err("Expected argument (string, int, float or bool)".to_string()),
+        _ => Err("引数は(string, number, bool)のみ".to_string()),
     }
 }
 
-fn parse_string(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
-    let token = tokens.next();
-    if let Some(Token::String(value)) = token {
-        Ok(Node {
-            kind: NodeKind::String { value: value },
-            children: vec![],
-        })
-    } else {
-        Err("".to_string())
-    }
-}
-
+/// 式の構文解析
+/// 
+/// ## Argments
+/// 
+/// - `tokens` - トークン列
+/// 
+/// ## Return
+/// 
+/// - Node
+/// 
+/// ## Example
+/// 
+/// ```
+/// let node = parse_expression(tokens)?;
+/// ```
 fn parse_expression(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
     let add_and_sub = parse_compare(tokens)?;
     Ok(Node {
@@ -172,20 +209,80 @@ fn parse_expression(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, Stri
     })
 }
 
+/// 比較式の構文解析
+/// 
+/// ## Argments
+/// 
+/// - `tokens` - トークン列
+/// 
+/// ## Return
+/// 
+/// - Node
+/// 
+/// ## Example
+/// 
+/// ```
+/// let node = parse_compare(tokens)?;
+/// ```
 fn parse_compare(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
-    let mut left = parse_add_and_sub(tokens)?;
+    let mut left = parse_literal(tokens)?;
 
     if let Some(Token::CompareOperator(operator)) = tokens.peek().cloned() {
         tokens.next();
-        let right = parse_add_and_sub(tokens)?;
+        let right = parse_literal(tokens)?;
         left = Node {
-            kind: NodeKind::Compare { operator: operator.to_string() },
+            kind: NodeKind::Compare { operator: operator },
             children: vec![left, right]
         }
     }
     Ok(left)
 }
 
+/// リテラル値の構文解析
+/// 
+/// ## Argments
+/// 
+/// - `tokens` - トークン列
+/// 
+/// ## Return
+/// 
+/// - Node
+/// 
+/// ## Example
+/// 
+/// ```
+/// let node = parse_literal(tokens)?;
+/// ```
+fn parse_literal(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+    let next_token = tokens.peek();
+    match next_token {
+        Some(Token::Number(_)) => {
+            let node = parse_add_and_sub(tokens)?;
+            Ok(node)
+        },
+        Some(Token::String(_)) => {
+            let node = parse_string(tokens)?;
+            Ok(node)
+        },
+        _ => { Err(format!("想定外のToken(literal):{:?}", next_token)) },
+    }
+}
+
+/// 足し算、引き算の構文解析
+/// 
+/// ## Argments
+/// 
+/// - `tokens` - トークン列
+/// 
+/// ## Return
+/// 
+/// - Node
+/// 
+/// ## Example
+/// 
+/// ```
+/// let node = parse_add_and_sub(tokens)?;
+/// ```
 fn parse_add_and_sub(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
     let mut left = parse_mul_and_div(tokens)?;
 
@@ -200,6 +297,21 @@ fn parse_add_and_sub(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, Str
     Ok(left)
 }
 
+/// 掛け算、引き算の構文解析
+/// 
+/// ## Argments
+/// 
+/// - `tokens` - トークン列
+/// 
+/// ## Return
+/// 
+/// - Node
+/// 
+/// ## Example
+/// 
+/// ```
+/// let node = parse_mul_and_div(tokens)?;
+/// ```
 fn parse_mul_and_div(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
     let mut left = parse_primary(tokens)?;
 
@@ -214,9 +326,25 @@ fn parse_mul_and_div(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, Str
     Ok(left)
 }
 
+/// 数値、計算式の'()'の構文解析
+/// 
+/// ## Argments
+/// 
+/// - `tokens` - トークン列
+/// 
+/// ## Return
+/// 
+/// - Node
+/// 
+/// ## Example
+/// 
+/// ```
+/// let node = parse_primary(tokens)?;
+/// ```
 fn parse_primary(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
-    match tokens.peek(){
-        Some(Token::Int(_)) | Some(Token::Float(_)) => {
+    let next_token = tokens.peek();
+    match next_token{
+        Some(Token::Number(_)) => {
             let number = parse_number(tokens)?;
             Ok(Node {
                 kind: NodeKind::Primary,
@@ -233,62 +361,80 @@ fn parse_primary(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String>
                     kind: NodeKind::Primary,
                     children: vec![expr],
                 }),
-                _ => Err("Expected ')' after expression".to_string()),
+                _ => Err("計算式の')'が必要".to_string()),
             }
         },
-        Some(Token::String(_)) => {
-            let string = parse_string(tokens)?;
-            Ok(Node {
-                kind: NodeKind::Primary,
-                children: vec![string]
-            })
-        }
-        _ => { Err("Expected primary expression".to_string()) },
+        _ => { Err(format!("想定外のToken(primary):{:?}", next_token)) },
     }
 }
 
+/// String型の構文解析
+/// 
+/// ## Argments
+/// 
+/// - `tokens` - トークン列
+/// 
+/// ## Return
+/// 
+/// - Node
+/// 
+/// ## Example
+/// 
+/// ```
+/// let node = parse_string(tokens)?;
+/// ```
+fn parse_string(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+    if let Some(Token::String(value)) = tokens.next() {
+        Ok(Node {
+            kind: NodeKind::String { value: value },
+            children: vec![],
+        })
+    } else {
+        Err("想定外のString型".to_string())
+    }
+}
+
+/// Number型の構文解析
+/// 
+/// ## Argments
+/// 
+/// - `tokens` - トークン列
+/// 
+/// ## Return
+/// 
+/// - Node
+/// 
+/// ## Example
+/// 
+/// ```
+/// let node = parse_number(tokens)?;
+/// ```
 fn parse_number(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
-    match tokens.peek(){
-        Some(Token::Int(_)) => {
-            let int_value = parse_int(tokens)?;
-            Ok(Node {
-                kind: NodeKind::Number,
-                children: vec![int_value],
-            })
-        },
-        Some(Token::Float(_)) => {
-            let float_value = parse_float(tokens)?;
-            Ok(Node {
-                kind: NodeKind::Number,
-                children: vec![float_value],
-            })
-        },
-        _ => { Err("Expected a number".to_string()) },
-    }
-}
-
-fn parse_int(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
-    if let Some(Token::Int(value)) = tokens.next() {
+    if let Some(Token::Number(value)) = tokens.next() {
         Ok(Node {
-            kind: NodeKind::Int { value: value },
+            kind: NodeKind::Number { value: value },
             children: vec![],
         })
     } else {
-        Err("".to_string())
+        Err("想定外のNumber型".to_string())
     }
 }
 
-fn parse_float(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
-    if let Some(Token::Float(value)) = tokens.next() {
-        Ok(Node {
-            kind: NodeKind::Float { value: value },
-            children: vec![],
-        })
-    } else {
-        Err("".to_string())
-    }
-}
-
+/// bool型の構文解析
+/// 
+/// ## Argments
+/// 
+/// - `tokens` - トークン列
+/// 
+/// ## Return
+/// 
+/// - Node
+/// 
+/// ## Example
+/// 
+/// ```
+/// let node = parse_bool(tokens)?;
+/// ```
 fn parse_bool(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
     if let Some(Token::Bool(value)) = tokens.next() {
         Ok(Node {
@@ -296,6 +442,6 @@ fn parse_bool(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
             children: vec![],
         })
     } else {
-        Err("".to_string())
+        Err("想定外のbool型".to_string())
     }
 }
