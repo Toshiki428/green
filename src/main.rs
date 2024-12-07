@@ -14,10 +14,10 @@ fn main() {
         }
     };
 
-    let tokens = match lexical_analyzer::tokenize(&content) {
+    let tokens = match lexical_analyzer::lex(&content) {
         Ok(tokens) => tokens,
         Err(e) => {
-            eprintln!("Error tokenizing text: {}", e);
+            eprintln!("字句エラー: {}", e);
             return;
         }
     };
