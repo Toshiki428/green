@@ -168,9 +168,9 @@ fn lex_slash(chars: &mut Peekable<Chars<'_>>) -> Result<Token, String> {
                         break;
                     }
                 }
-            }
-            if chars.peek().is_none() {
-                return Err("コメント中にファイル終了".to_string());
+                if chars.peek().is_none() {
+                    return Err("コメント中にファイル終了".to_string());
+                }
             }
             return Ok(Token::Comment);
         },
