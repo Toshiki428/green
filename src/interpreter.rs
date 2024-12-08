@@ -1,14 +1,15 @@
 use crate::parser::{Node, NodeKind};
 
 #[derive(Debug)]
-enum EvaluateExpressionType {
+enum ArgumentType {
     Number(f64),
     Bool(bool),
+    String(String),
 }
 
 /// プログラムの実行
 /// 
-/// ## Argments
+/// ## Arguments
 /// 
 /// - `node` - ASTのノード
 /// 
@@ -19,169 +20,241 @@ enum EvaluateExpressionType {
 /// ## Example
 /// 
 /// ```
-/// if let Err(e) = interpreter::execute_ast(&ast) { 
-///     eprintln!("Error execute: {}", e);
+/// if let Err(e) = interpreter::execute(&ast) {
+///     eprintln!("実行エラー: {}", e);
 ///     return;
 /// }
 /// ```
-pub fn execute_ast(node: &Node) -> Result<(), String> {
+pub fn execute(node: &Node) -> Result<(), String> {
     match &node.kind {
         NodeKind::Program => {
             for child in &node.children {
-                execute_ast(child)?;
+                execute(child)?;
             }
-            Ok(())
         },
         NodeKind::FunctionCall { name } => {
-            if name == "print" {
-                print_function(node)
-            } else {
-                Err(format!("Unknown function: {}", name))
+            match name.as_str() {
+                "print" => { print_function(node)?; },
+                _ => { return Err(format!("未定義の関数: {}", name)) },
             }
         },
-        _ => Err("Unsupported node type".to_string()),
+        _ => return Err("想定外のNodeKind".to_string()),
     }
+    Ok(())
 }
 
+/// print関数の実行
+/// 
+/// ## Arguments
+/// 
+/// - `node`
+/// 
+/// ## Return
+/// 
+/// - 実行結果
+/// 
+/// ## Example
+/// 
+/// ```
+/// print_function(node)?;
+/// ```
 fn print_function(node: &Node) -> Result<(), String> {
-    if let Some(argument) = node.children.get(0) {
-        match &argument.kind {
-            NodeKind::Argument => {
-                if let Some(first_child) = argument.children.get(0){
-                    match &first_child.kind {
-                        NodeKind::String { value } => {
-                            println!("{}", value);
-                            Ok(())
-                        },
-                        NodeKind::Expression => {
-                            if let Some(expression_child) = first_child.children.get(0){
-                                if let Some(result) = evaluate_expression(expression_child) {
-                                    println!("{:?}", result);
-                                    Ok(())
-                                } else {
-                                    Err("Failed to evaluate the numerical expression".to_string())
-                                }
-                            } else {
-                                Err("Err".to_string())
-                            }
-                        },
-                        NodeKind::Bool { value } => {
-                            println!("{}", value);
-                            Ok(())
-                        },
-                        _ => Err("Unsupported argument type in Argument node".to_string()),
-                    }
-                } else {
-                    Err("Argument node is empty".to_string())
-                }
-            },
-            _ => Err("Invalid argument to function 'print'".to_string()),
-        }
-    } else {
-        Err("Missing argument to function 'print'".to_string())
+    let argument = node.children.get(0).ok_or("'print'関数の引数がない")?;
+    if argument.kind != NodeKind::Argument {
+        return Err("想定外の'print'関数の引数".to_string());
+    }
+
+    let value = evaluate_argument(argument)?;
+    match value {
+        ArgumentType::Number(number) => println!("{}", number),
+        ArgumentType::Bool(value) => println!("{}", value),
+        ArgumentType::String(value) => println!("{}", value),
+    }
+    Ok(())
+}
+
+/// 引数の評価
+/// ## Arguments
+/// 
+/// - `node`
+/// 
+/// ## Return
+/// 
+/// - 評価結果
+/// 
+/// ## Example
+/// 
+/// ```
+/// let result = evaluate_argument(node)?;
+/// ```
+fn evaluate_argument(node: &Node) -> Result<ArgumentType, String> {
+    let first_child = node.children.get(0).ok_or(format!("引数が空: {:?}", node))?;
+    match &first_child.kind {
+        NodeKind::Expression => {
+            let expression_node = first_child.children.get(0).ok_or(format!("計算式が空: {:?}", first_child))?;
+            let expression = evaluate_expression(expression_node)?;
+            return Ok(expression);
+        },
+        NodeKind::Bool { value } => return Ok(ArgumentType::Bool(*value)),
+        _ => return Err("想定外の引数の型".to_string()),
     }
 }
 
-fn evaluate_expression(node: &Node) -> Option<EvaluateExpressionType> {
+/// 式の評価
+/// 
+/// ## Arguments
+/// 
+/// - `node`
+/// 
+/// ## Return
+/// 
+/// - 評価結果
+/// 
+/// ## Example
+/// 
+/// ```
+/// let result = evaluate_expression(node)?;
+/// ```
+fn evaluate_expression(node: &Node) -> Result<ArgumentType, String> {
     match &node.kind {
-        NodeKind::Float { value } => Some( EvaluateExpressionType::Number(*value) ),
-        NodeKind::Int { value } => Some( EvaluateExpressionType::Number( *value as f64 ) ),
-        NodeKind::Number => {
-            let number = node.children.get(0)?;
-            let value = evaluate_expression(number)?;
-            Some(value)
-        },
-        NodeKind::Primary => {
-            let number = node.children.get(0)?;
-            let value = evaluate_expression(number)?;
-            Some(value)
-        },
-        NodeKind::MulAndDiv { operator } => {
-            let left = node.children.get(0)?;
-            match evaluate_expression(left) {
-                Some(EvaluateExpressionType::Number(left_value)) => {
-                    match operator.as_str() {
-                        "*" => {
-                            let right = node.children.get(1)?;
-                            if let EvaluateExpressionType::Number(right_value) = evaluate_expression(right)?{
-                                return Some(EvaluateExpressionType::Number(left_value * right_value));
-                            } else {
-                                return None;
-                            }
-                        },
-                        "/" => {
-                            let right = node.children.get(1)?;
-                            if let EvaluateExpressionType::Number(right_value) = evaluate_expression(right)?{
-                                return Some(EvaluateExpressionType::Number(left_value / right_value));
-                            } else {
-                                return None;
-                            }
-                        },
-                        "" => Some(EvaluateExpressionType::Number(left_value)),
-                        _ => None,
-                    }
-                },
-                Some(EvaluateExpressionType::Bool(value)) => Some(EvaluateExpressionType::Bool(value)),
-                _ => None,
-            }
-        },
-        NodeKind::AddAndSub { operator } => {
-            let left = node.children.get(0)?;
-            match evaluate_expression(left) {
-                Some(EvaluateExpressionType::Number(left_value)) => {
-                    match operator.as_str() {
-                        "+" => {
-                            let right = node.children.get(1)?;
-                            if let EvaluateExpressionType::Number(right_value) = evaluate_expression(right)?{
-                                return Some(EvaluateExpressionType::Number(left_value + right_value));
-                            } else {
-                                return None;
-                            }
-                        },
-                        "-" => {
-                            let right = node.children.get(1)?;
-                            if let EvaluateExpressionType::Number(right_value) = evaluate_expression(right)?{
-                                return Some(EvaluateExpressionType::Number(left_value - right_value));
-                            } else {
-                                return None;
-                            }
-                        },
-                        "" => Some(EvaluateExpressionType::Number(left_value)),
-                        _ => None,
-                    }
-                },
-                Some(EvaluateExpressionType::Bool(value)) => { return Some(EvaluateExpressionType::Bool(value)); }
-                _ => { return None; }
-            }
-        }
         NodeKind::Compare { operator } => {
-            let left = node.children.get(0)?;
-            match evaluate_expression(left) {
-                Some(EvaluateExpressionType::Number(left_value)) => {
+            let left_node = node.children.get(0).ok_or(format!("式が無効: {:?}", node))?;
+            let left = evaluate_value(left_node)?;
+            match left {
+                ArgumentType::Number(left_value) => {
                     match operator.as_str() {
                         "==" => {
-                            let right = node.children.get(1)?;
-                            if let EvaluateExpressionType::Number(right_value) = evaluate_expression(right)?{
-                                return Some(EvaluateExpressionType::Bool(left_value == right_value));
+                            let right_node = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
+                            if let ArgumentType::Number(right_value) = evaluate_value(right_node)?{
+                                return Ok(ArgumentType::Bool(left_value == right_value));
                             } else {
-                                return None;
+                                return Err(format!("Number型とString型の比較はできません: {:?}", node));
                             }
                         },
                         "!=" => {
-                            let right = node.children.get(1)?;
-                            if let EvaluateExpressionType::Number(right_value) = evaluate_expression(right)?{
-                                return Some(EvaluateExpressionType::Bool(left_value != right_value));
+                            let right_node = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
+                            if let ArgumentType::Number(right_value) = evaluate_value(right_node)?{
+                                return Ok(ArgumentType::Bool(left_value != right_value));
                             } else {
-                                return None;
+                                return Err(format!("Number型とString型の比較はできません: {:?}", node));
                             }
                         },
-                        "" => Some(EvaluateExpressionType::Number(left_value)),
-                        _ => None,
+                        "" => Ok(ArgumentType::Number(left_value)),
+                        _ => Err(format!("想定外の比較演算子: {}", operator)),
                     }
-                }
-                _ => None,
+                },
+                ArgumentType::String(left_value) => {
+                    match operator.as_str() {
+                        "==" => {
+                            let right_node = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
+                            if let ArgumentType::String(right_value) = evaluate_value(right_node)?{
+                                return Ok(ArgumentType::Bool(left_value == right_value));
+                            } else {
+                                return Err(format!("String型とNumber型の比較はできません: {:?}", node));
+                            }
+                        },
+                        "!=" => {
+                            let right_node = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
+                            if let ArgumentType::String(right_value) = evaluate_value(right_node)?{
+                                return Ok(ArgumentType::Bool(left_value != right_value));
+                            } else {
+                                return Err(format!("String型とNumber型の比較はできません: {:?}", node));
+                            }
+                        },
+                        "" => Ok(ArgumentType::String(left_value)),
+                        _ => Err(format!("想定外の比較演算子: {}", operator)),
+                    }
+                },
+                _ => Err(format!("想定外の式の型: {:?}", left)),
+            }
+        },        
+        _ => Err(format!("想定外の型: {:?}", node)),
+    }
+}
+
+/// 値の評価
+/// 
+/// ## Arguments
+/// 
+/// - `node`
+/// 
+/// ## Return
+/// 
+/// - 評価結果
+/// 
+/// ## Example
+/// 
+/// ```
+/// let result = evaluate_value(node)?;
+/// ```
+fn evaluate_value(node: &Node) -> Result<ArgumentType, String> {
+    match &node.kind {
+        NodeKind::String { value } => Ok(ArgumentType::String(value.to_string())),
+        NodeKind::AddAndSub { operator } => {
+            let left = node.children.get(0).ok_or(format!("式が無効: {:?}", node))?;
+            match evaluate_value(left)? {
+                ArgumentType::Number(left_value) => {
+                    match operator.as_str() {
+                        "+" => {
+                            let right = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
+                            if let ArgumentType::Number(right_value) = evaluate_value(right)?{
+                                return Ok(ArgumentType::Number(left_value + right_value));
+                            } else {
+                                return Err(format!("無効な足し算: {:?}", node));
+                            }
+                        },
+                        "-" => {
+                            let right = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
+                            if let ArgumentType::Number(right_value) = evaluate_value(right)?{
+                                return Ok(ArgumentType::Number(left_value - right_value));
+                            } else {
+                                return Err(format!("無効な引き算: {:?}", node));
+                            }
+                        },
+                        "" => Ok(ArgumentType::Number(left_value)),
+                        _ => Err(format!("想定外の演算子: {}", operator)),
+                    }
+                },
+                _ => Err(format!("想定外のAddAndSub型: {:?}", node))
             }
         },
-        _ => None,
+        NodeKind::MulAndDiv { operator } => {
+            let left = node.children.get(0).ok_or(format!("式が無効: {:?}", node))?;
+            match evaluate_value(left)? {
+                ArgumentType::Number(left_value) => {
+                    match operator.as_str() {
+                        "*" => {
+                            let right = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
+                            if let ArgumentType::Number(right_value) = evaluate_value(right)?{
+                                return Ok(ArgumentType::Number(left_value * right_value));
+                            } else {
+                                return Err(format!("無効な掛け算: {:?}", node));
+                            }
+                        },
+                        "/" => {
+                            let right = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
+                            if let ArgumentType::Number(right_value) = evaluate_value(right)?{
+                                if right_value == 0.0 {
+                                    return Err(format!("0で割ることはできません: {:?}", node));
+                                }
+                                return Ok(ArgumentType::Number(left_value / right_value));
+                            } else {
+                                return Err(format!("無効な割り算: {:?}", node));
+                            }
+                        },
+                        "" => Ok(ArgumentType::Number(left_value)),
+                        _ => Err(format!("想定外の演算子: {}", operator)),
+                    }
+                },
+                _ => Err(format!("想定外のMulAndDiv型: {:?}", node)),
+            }
+        },
+        NodeKind::Primary => {
+            let number = node.children.get(0).ok_or(format!("式が無効: {:?}", node))?;
+            let value = evaluate_value(number)?;
+            Ok(value)
+        },
+        NodeKind::Number { value } => Ok(ArgumentType::Number(*value)),
+        _ => { Err(format!("想定外のリテラルの型: {:?}", node)) }
     }
 }

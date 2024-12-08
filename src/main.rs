@@ -32,8 +32,8 @@ fn main() {
     };
     ast.print(0);
 
-    if let Err(e) = interpreter::execute_ast(&ast) {
-        eprintln!("Error execute: {}", e);
+    if let Err(e) = interpreter::execute(&ast) {
+        eprintln!("実行エラー: {}", e);
         return;
     }
 }

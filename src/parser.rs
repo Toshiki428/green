@@ -1,7 +1,7 @@
 use std::{vec, vec::IntoIter, iter::Peekable};
 use crate::lexical_analyzer::Token;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum NodeKind {
     Program,
     FunctionCall { name: String },
@@ -225,20 +225,23 @@ fn parse_expression(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, Stri
 /// let node = parse_compare(tokens)?;
 /// ```
 fn parse_compare(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
-    let mut left = parse_literal(tokens)?;
+    let left = parse_value(tokens)?;
 
     if let Some(Token::CompareOperator(operator)) = tokens.peek().cloned() {
         tokens.next();
-        let right = parse_literal(tokens)?;
-        left = Node {
+        let right = parse_value(tokens)?;
+        return Ok(Node {
             kind: NodeKind::Compare { operator: operator },
             children: vec![left, right]
-        }
+        });
     }
-    Ok(left)
+    Ok(Node {
+        kind: NodeKind::Compare { operator: "".to_string() },
+        children: vec![left]
+    })
 }
 
-/// リテラル値の構文解析
+/// 値の構文解析
 /// 
 /// ## Argments
 /// 
@@ -251,9 +254,9 @@ fn parse_compare(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String>
 /// ## Example
 /// 
 /// ```
-/// let node = parse_literal(tokens)?;
+/// let node = parse_value(tokens)?;
 /// ```
-fn parse_literal(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+fn parse_value(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
     let next_token = tokens.peek();
     match next_token {
         Some(Token::Number(_)) => {
@@ -264,7 +267,7 @@ fn parse_literal(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String>
             let node = parse_string(tokens)?;
             Ok(node)
         },
-        _ => { Err(format!("想定外のToken(literal):{:?}", next_token)) },
+        _ => { Err(format!("想定外のToken(value):{:?}", next_token)) },
     }
 }
 
