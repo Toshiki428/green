@@ -10,6 +10,7 @@ pub enum NodeKind {
     Compare { operator: String },
     AddAndSub { operator: String },
     MulAndDiv { operator: String },
+    Unary { operator: String },
     Primary,
     String { value: String },
     Number {value: f64 },
@@ -35,6 +36,7 @@ impl Node {
             NodeKind::Compare { operator } => println!("Compare: {}", operator),
             NodeKind::AddAndSub { operator } => println!("AddAndSub:{}", operator),
             NodeKind::MulAndDiv { operator } => println!("MulAndDiv:{}", operator),
+            NodeKind::Unary { operator } => println!("Unary: {}", operator),
             NodeKind::Primary => println!("Primary:"),
             NodeKind::String { value } => println!("String: {}", value),
             NodeKind::Number { value } => println!("Number: {}", value),
@@ -168,7 +170,7 @@ fn parse_function_call(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, S
 /// ```
 fn parse_argument(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
     match tokens.peek() {
-        Some(Token::String(_)) | Some(Token::Number(_)) => {
+        Some(Token::String(_)) | Some(Token::Number(_)) | Some(Token::AddAndSubOperator(_)) | Some(Token::LParen) => {
             let expression = parse_expression(tokens)?;
             Ok(Node {
                 kind: NodeKind::Argument,
@@ -181,7 +183,7 @@ fn parse_argument(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String
                 kind: NodeKind::Argument,
                 children: vec![bool_value],
             })
-        }
+        },
         _ => Err("引数は(string, number, bool)のみ".to_string()),
     }
 }
@@ -259,7 +261,7 @@ fn parse_compare(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String>
 fn parse_value(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
     let next_token = tokens.peek();
     match next_token {
-        Some(Token::Number(_)) => {
+        Some(Token::Number(_)) | Some(Token::AddAndSubOperator(_)) | Some(Token::LParen) => {
             let node = parse_add_and_sub(tokens)?;
             Ok(node)
         },
@@ -316,17 +318,54 @@ fn parse_add_and_sub(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, Str
 /// let node = parse_mul_and_div(tokens)?;
 /// ```
 fn parse_mul_and_div(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
-    let mut left = parse_primary(tokens)?;
+    let mut left = parse_unary(tokens)?;
 
     while let Some(Token::MulAndDivOperator(operator)) = tokens.peek().cloned() {
         tokens.next();
-        let right = parse_primary(tokens)?;
+        let right = parse_unary(tokens)?;
         left = Node {
             kind: NodeKind::MulAndDiv { operator: operator.to_string() },
             children: vec![left, right]
         };
     }
     Ok(left)
+}
+
+/// 単項演算子の構文解析
+/// 
+/// ## Arguments
+/// 
+/// - `tokens` - トークン列
+/// 
+/// ## Return
+/// 
+/// - Node
+/// 
+/// ## Example
+/// 
+/// ```
+/// let node = parse_unary(tokens)?;
+/// ```
+fn parse_unary(tokens: &mut Peekable<IntoIter<Token>>) -> Result<Node, String> {
+    let next_token = tokens.peek().cloned();
+    match next_token {
+        Some(Token::Number(_)) | Some(Token::LParen) => {
+            let number = parse_primary(tokens)?;
+            Ok(Node {
+                kind: NodeKind::Unary { operator: "+".to_string() },
+                children: vec![number],
+            })
+        },
+        Some(Token::AddAndSubOperator(operator)) => {
+            tokens.next();
+            let number = parse_primary(tokens)?;
+            Ok(Node {
+                kind: NodeKind::Unary { operator: operator.to_string() },
+                children: vec![number],
+            })
+        },
+        _ => { Err(format!("想定外のToken(unary):{:?}", next_token)) },
+    }
 }
 
 /// 数値、計算式の'()'の構文解析

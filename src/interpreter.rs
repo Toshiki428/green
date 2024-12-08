@@ -249,6 +249,18 @@ fn evaluate_value(node: &Node) -> Result<ArgumentType, String> {
                 _ => Err(format!("想定外のMulAndDiv型: {:?}", node)),
             }
         },
+        NodeKind::Unary { operator } => {
+            let number = node.children.get(0).ok_or(format!("式が無効: {:?}", node))?;
+            if let ArgumentType::Number(value) = evaluate_value(number)?{
+                let mut result = value;
+                if operator == "-" {
+                    result = -1.0 * value;
+                }
+                Ok(ArgumentType::Number(result))
+            } else {
+                Err(format!("想定外のPrimary型: {:?}", number))
+            }
+        },
         NodeKind::Primary => {
             let number = node.children.get(0).ok_or(format!("式が無効: {:?}", node))?;
             let value = evaluate_value(number)?;
