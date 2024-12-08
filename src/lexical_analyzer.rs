@@ -73,7 +73,23 @@ pub fn lex(text: &str) -> Result<Vec<Token>, String> {
                     Some('=') => { tokens.push(Token::CompareOperator("!=".to_string())); chars.next(); },
                     _ => { return Err("".to_string()); }
                 }
-            }
+            },
+            '>' => {
+                chars.next();
+                match chars.peek() {
+                    Some('=') => { tokens.push(Token::CompareOperator(">=".to_string())); chars.next(); },
+                    Some(_) => { tokens.push(Token::CompareOperator(">".to_string())); chars.next(); },
+                    _ => { return Err("a".to_string()); }
+                }
+            },
+            '<' => {
+                chars.next();
+                match chars.peek() {
+                    Some('=') => { tokens.push(Token::CompareOperator("<=".to_string())); chars.next(); },
+                    Some(_) => { tokens.push(Token::CompareOperator("<".to_string())); chars.next(); },
+                    _ => { return Err("a".to_string()); }
+                }
+            },
             _ if char.is_alphabetic() => { tokens.push(lex_identifier_or_keyword(&mut chars)?); },
             _ if char.is_numeric() => { tokens.push(lex_number(&mut chars)?); },
             _ => return Err(format!("想定外の文字 {}", char)),

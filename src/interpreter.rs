@@ -120,55 +120,61 @@ fn evaluate_expression(node: &Node) -> Result<ArgumentType, String> {
         NodeKind::Compare { operator } => {
             let left_node = node.children.get(0).ok_or(format!("式が無効: {:?}", node))?;
             let left = evaluate_value(left_node)?;
-            match left {
-                ArgumentType::Number(left_value) => {
-                    match operator.as_str() {
-                        "==" => {
-                            let right_node = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
-                            if let ArgumentType::Number(right_value) = evaluate_value(right_node)?{
-                                return Ok(ArgumentType::Bool(left_value == right_value));
-                            } else {
-                                return Err(format!("Number型とString型の比較はできません: {:?}", node));
+            
+            match operator.as_str() {
+                "" => Ok(left),
+                "==" | "!=" | ">=" | ">" | "<=" | "<" => {
+                    let right_node = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
+                    let right = evaluate_value(right_node)?;
+                    match (left, right) {
+                        (ArgumentType::Number(left_value), ArgumentType::Number(right_value)) => {
+                            let result = compare_values(operator, left_value, right_value)?;
+                            Ok(ArgumentType::Bool(result))
+                        },
+                        (ArgumentType::String(left_value), ArgumentType::String(right_value)) => {
+                            match operator.as_str() {
+                                "==" => Ok(ArgumentType::Bool(left_value == right_value)),
+                                "!=" => Ok(ArgumentType::Bool(left_value != right_value)),
+                                _ => Err(format!("文字列に許可されていない比較演算子: {}", operator)),
                             }
                         },
-                        "!=" => {
-                            let right_node = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
-                            if let ArgumentType::Number(right_value) = evaluate_value(right_node)?{
-                                return Ok(ArgumentType::Bool(left_value != right_value));
-                            } else {
-                                return Err(format!("Number型とString型の比較はできません: {:?}", node));
-                            }
+                        (left_value, right_value) => {
+                            Err(format!("異なる型の比較はできません: 左: {:?} 右: {:?}", left_value, right_value))
                         },
-                        "" => Ok(ArgumentType::Number(left_value)),
-                        _ => Err(format!("想定外の比較演算子: {}", operator)),
                     }
                 },
-                ArgumentType::String(left_value) => {
-                    match operator.as_str() {
-                        "==" => {
-                            let right_node = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
-                            if let ArgumentType::String(right_value) = evaluate_value(right_node)?{
-                                return Ok(ArgumentType::Bool(left_value == right_value));
-                            } else {
-                                return Err(format!("String型とNumber型の比較はできません: {:?}", node));
-                            }
-                        },
-                        "!=" => {
-                            let right_node = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
-                            if let ArgumentType::String(right_value) = evaluate_value(right_node)?{
-                                return Ok(ArgumentType::Bool(left_value != right_value));
-                            } else {
-                                return Err(format!("String型とNumber型の比較はできません: {:?}", node));
-                            }
-                        },
-                        "" => Ok(ArgumentType::String(left_value)),
-                        _ => Err(format!("想定外の比較演算子: {}", operator)),
-                    }
-                },
-                _ => Err(format!("想定外の式の型: {:?}", left)),
+                _ => Err(format!("想定外の比較演算子: {}", operator)),                    
             }
         },        
         _ => Err(format!("想定外の型: {:?}", node)),
+    }
+}
+
+/// 比較処理
+/// 
+/// ## Argument
+/// 
+/// - `operator` - 比較演算子
+/// - `left` - 左辺
+/// - `right` - 右辺
+/// 
+/// ## Return
+/// 
+/// - 比較結果のBool値
+/// 
+/// ## Exmaple
+/// ```
+/// let result = compare_values(operator, left, right)
+/// ```
+fn compare_values(operator: &str, left: f64, right: f64) -> Result<bool, String> {
+    match operator {
+        "==" => Ok(left == right),
+        "!=" => Ok(left != right),
+        ">=" => Ok(left >= right),
+        ">" => Ok(left > right),
+        "<=" => Ok(left <= right),
+        "<" => Ok(left < right),
+        _ => Err(format!("想定外の比較演算子: {}", operator)),
     }
 }
 
