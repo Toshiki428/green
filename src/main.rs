@@ -1,12 +1,21 @@
-use std::{fs::File, io::{Result, Read}};
+use std::{env, fs::File, io::{Result, Read}};
 
+mod cli_arg_parse;
 mod lexical_analyzer;
 mod parser;
 mod interpreter;
 
 fn main() {
-    let file_path = "main.grn";
-    let content = match load_file_content(file_path) {
+    let args: Vec<String> = env::args().collect();
+    let config = match cli_arg_parse::Config::new(&args){
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("コマンドライン解析エラー: {}", e);
+            return;
+        }
+    };
+    
+    let content = match load_file_content(&config.file_path) {
         Ok(content) => content,
         Err(e) => {
             eprintln!("Error reading file: {}", e);
@@ -21,7 +30,6 @@ fn main() {
             return;
         }
     };
-    println!("Tokens: {:?}", tokens);
 
     let ast = match parser::create_ast(tokens){
         Ok(node) => node,
@@ -30,11 +38,12 @@ fn main() {
             return;
         }
     };
-    ast.print(0);
 
-    if let Err(e) = interpreter::execute(&ast) {
-        eprintln!("実行エラー: {}", e);
-        return;
+    if config.option == cli_arg_parse::RunMode::Execute {
+        if let Err(e) = interpreter::execute(&ast) {
+            eprintln!("実行エラー: {}", e);
+            return;
+        }
     }
 }
 
