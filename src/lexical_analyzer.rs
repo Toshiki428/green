@@ -1,7 +1,7 @@
 use std::{iter::Peekable, str::Chars, vec};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Token {
+pub enum TokenKind {
     FunctionName(String),
     String(String),
     Number(f64),
@@ -15,6 +15,271 @@ pub enum Token {
     EOF,
     DocComment(String),
     Comment,
+}
+
+#[derive(Debug)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub row: u32,
+    pub col: u32,
+}
+
+pub struct Lexer<'a> {
+    chars: Peekable<Chars<'a>>,
+    tokens: Vec<Token>,
+    row: u32,
+    col: u32,
+}
+
+impl<'a> Lexer<'a> {
+    fn new(text: &'a str) -> Self {
+        let chars = text.chars().peekable();
+        Self {
+            chars,
+            tokens: Vec::new(),
+            row: 1,
+            col: 1,
+        }
+    }
+
+    fn tokenize(mut self) -> Result<Vec<Token>, String> {
+        while let Some(&char) = self.chars.peek() {
+            match char {
+                ' ' | '\n' | '\r' | '\t' =>  self.next_char(),
+                '(' => {self.push_token(TokenKind::LParen); self.next_char();},
+                ')' => {self.push_token(TokenKind::RParen); self.next_char();},
+                ';' => {self.push_token(TokenKind::Semicolon); self.next_char();},
+                '+' => {self.push_token(TokenKind::AddAndSubOperator("+".to_string())); self.next_char();},
+                '-' => {self.push_token(TokenKind::AddAndSubOperator("-".to_string())); self.next_char();},
+                '*' => {self.push_token(TokenKind::MulAndDivOperator("*".to_string())); self.next_char();},
+                '/' => self.lex_slash()?,
+                '"' => self.lex_string()?,
+                '=' => self.lex_equal()?,
+                '!' => self.lex_exclamation()?,
+                '<' => self.lex_left_angle()?,
+                '>' => self.lex_right_angle()?,
+                _ if char.is_alphabetic() => self.lex_identifier()?,
+                _ if char.is_numeric() => self.lex_number()?,
+                _ => return Err(format!("想定外の文字 {}", char)),
+            }
+        }
+        self.push_token(TokenKind::EOF);
+        return Ok(self.tokens);
+    }
+
+    /// 文字列の字句解析処理
+    /// 
+    /// ## Example
+    /// 
+    /// ```
+    /// lexer.lex_string()?;
+    /// ```
+    fn lex_string(&mut self) -> Result<(), String> {
+        self.next_char();  // 最初の「"」をスキップ
+        let mut string = String::new();
+        while let Some(&c) = self.chars.peek() {
+            if c == '"' || c == '\n' || c == '\r' { break; }
+            string.push(c);
+            self.next_char();
+        }
+
+        if self.chars.peek() != Some(&'"') {
+            return Err("文字列が閉じられていない".to_string());
+        }
+        self.next_char();   // 閉じる「"」をスキップ
+        self.push_token(TokenKind::String(string));
+        Ok(())
+    }
+
+    /// スラッシュ記号の字句解析処理
+    fn lex_slash(&mut self) -> Result<(), String> {
+        self.next_char();       // 最初の`/`をスキップ
+        let token_kind: TokenKind;
+
+        let c = self.chars.peek();
+        match c {
+            Some(&'/') => {
+                self.next_char();
+                match self.chars.peek() {
+                    Some('/') => {
+                        self.next_char();
+                        let mut doc_comment = String::new();
+                        while let Some(&c) = self.chars.peek() {
+                            self.next_char();
+                            match c {
+                                '\n' => { break; }
+                                '\r' => {},
+                                _ => { doc_comment.push(c) },
+                            }
+                        }
+                        // 変数や関数を実数したとき改めて実装
+                        token_kind = TokenKind::DocComment(doc_comment);
+                    },
+                    _ => {
+                        while let Some(&c) = self.chars.peek() {
+                            self.next_char();
+                            if c == '\n' { break; }
+                        }
+                        token_kind = TokenKind::Comment;
+                    },
+                }
+            },
+            Some(&'*') => {
+                self.next_char();
+                while let Some(&c) = self.chars.peek() {
+                    self.next_char();
+                    if c == '*' {
+                        if let Some('/') = self.chars.peek() {
+                            self.next_char();
+                            break;
+                        }
+                    }
+                    if self.chars.peek().is_none() {
+                        return Err("コメント中にファイル終了".to_string());
+                    }
+                }
+                token_kind = TokenKind::Comment;
+            },
+            Some(_) => {
+                self.next_char();
+                token_kind = TokenKind::MulAndDivOperator("/".to_string());
+            },
+            None => {
+                return Err("'/'で入力終了".to_string()); // 入力が尽きた場合
+            },
+        } 
+
+        match token_kind {
+            TokenKind::Comment => {},  // Commentはtokensに追加しない
+            TokenKind::DocComment(_) => {},  // 一時的にDocCommentも追加しない
+            _ => { self.push_token(token_kind); },
+        }
+        Ok(())
+    }
+
+    /// イコール記号の字句解析処理
+    fn lex_equal(&mut self) -> Result<(), String> {
+        self.next_char();
+        match self.chars.peek() {
+            Some('=') => { self.push_token(TokenKind::CompareOperator("==".to_string())); self.next_char(); },
+            _ => { return Err(format!("定義されていない演算子: {:?} {} {}", self.chars.peek(), self.row, self.col)); },
+        }
+        Ok(())
+    }
+
+    /// ビックリマークの字句解析処理
+    fn lex_exclamation(&mut self) -> Result<(), String> {
+        self.next_char();
+        match self.chars.peek() {
+            Some('=') => { self.push_token(TokenKind::CompareOperator("!=".to_string())); self.next_char(); },
+            _ => { return Err(format!("定義されていない演算子: {:?}", self.chars.peek())); }
+        }
+        Ok(())
+    }
+
+    /// `<`の字句解析
+    fn lex_left_angle(&mut self) -> Result<(), String> {
+        self.next_char();
+        match self.chars.peek() {
+            Some('=') => { self.push_token(TokenKind::CompareOperator("<=".to_string())); self.next_char(); },
+            Some(_) => { self.push_token(TokenKind::CompareOperator("<".to_string())); },
+            _ => { return Err(format!("定義されていない演算子: {:?}", self.chars.peek())); }
+        }
+        Ok(())
+    }
+
+    /// `>`の字句解析
+    fn lex_right_angle(&mut self) -> Result<(), String> {
+        self.next_char();
+        match self.chars.peek() {
+            Some('=') => { self.push_token(TokenKind::CompareOperator(">=".to_string())); self.next_char(); },
+            Some(_) => { self.push_token(TokenKind::CompareOperator(">".to_string())); },
+            _ => { return Err(format!("定義されていない演算子: {:?}", self.chars.peek())); }
+        }
+        Ok(())
+    }
+
+    /// 関数、変数、bool値などの字句解析処理
+    fn lex_identifier(&mut self) -> Result<(), String> {
+        let mut string = String::new();
+        while let Some(&c) = self.chars.peek() {
+            if !c.is_alphabetic() && !c.is_numeric() { break; }
+            string.push(c);
+            self.next_char();
+        }
+        match string.as_str() {
+            "true" => self.push_token(TokenKind::Bool(true)),
+            "false" => self.push_token(TokenKind::Bool(false)),
+            _ => self.push_token(TokenKind::FunctionName(string)),
+        }
+
+        Ok(())
+    }
+
+    /// 数値の字句解析
+    fn lex_number(&mut self) -> Result<(), String> {
+        let mut number_string = String::new();
+
+        while let Some(&c) = self.chars.peek() {
+            if c.is_numeric() || c == '.' {
+                number_string.push(c);
+                self.next_char();
+            } else if vec![' ', ')', '+', '-', '*', '/', '=', '!'].contains(&c) {
+                break;
+            } else {
+                number_string.push(c);
+                self.next_char();
+                break;
+            }
+        }
+    
+        if let Ok(value) = number_string.parse::<f64>() {
+            self.push_token(TokenKind::Number(value))
+        } else {
+            return Err(format!("無効なNumber型の数値 {}", number_string));
+        }
+
+        Ok(())
+    }
+
+    /// tokenの追加
+    /// 
+    /// ## Argument
+    /// 
+    /// - `kind` - 追加するトークンの種類
+    /// 
+    /// ## example
+    /// 
+    /// ```
+    /// push_token(TokenKind::LParen)
+    /// ```
+    fn push_token(&mut self, kind: TokenKind) {
+        self.tokens.push(Token { kind, row: self.row, col: self.col });
+    }
+
+    /// 次の文字へ進む
+    /// 文字の行数や列数のカウントも行う
+    /// 
+    /// ## Returns
+    /// 
+    /// - `Option<char>` - 次の文字
+    /// 
+    /// ## Example
+    /// 
+    /// ```
+    /// lexer.next_char();
+    /// ```
+    fn next_char(&mut self) {
+        match self.chars.next() {
+            Some('\n') => {
+                self.row += 1;
+                self.col = 1;
+            }, 
+            _ => {
+                self.col += 1;
+            },
+        }
+    }
 }
 
 /// トークナイズを行う
@@ -39,233 +304,6 @@ pub enum Token {
 /// };
 /// ```
 pub fn lex(text: &str) -> Result<Vec<Token>, String> {
-    let mut tokens = Vec::new();
-    let mut chars = text.chars().peekable();
-
-    while let Some(&char) = chars.peek() {
-        match char {
-            ' ' | '\n' | '\r' | '\t' => { chars.next(); },  // 無視
-            '(' => { tokens.push(Token::LParen); chars.next(); },
-            ')' => { tokens.push(Token::RParen); chars.next(); },
-            ';' => { tokens.push(Token::Semicolon); chars.next(); },
-            '"' => { tokens.push(lex_string(&mut chars)?); },
-            '+' => { tokens.push(Token::AddAndSubOperator("+".to_string())); chars.next(); },
-            '-' => { tokens.push(Token::AddAndSubOperator("-".to_string())); chars.next(); },
-            '*' => { tokens.push(Token::MulAndDivOperator("*".to_string())); chars.next(); },
-            '/' => { 
-                let slash_string = lex_slash(&mut chars)?;
-                match slash_string {
-                    Token::Comment => { continue; },  // Commentはtokensに追加しない
-                    Token::DocComment(_) => { continue; },  // 一時的にDocCommentも追加しない
-                    _ => { tokens.push( slash_string ); },
-                }
-            },
-            '=' => {
-                chars.next();
-                match chars.peek() {
-                    Some('=') => { tokens.push(Token::CompareOperator("==".to_string())); chars.next(); },
-                    _ => { return Err("".to_string()); },
-                }
-            },
-            '!' => {
-                chars.next();
-                match chars.peek() {
-                    Some('=') => { tokens.push(Token::CompareOperator("!=".to_string())); chars.next(); },
-                    _ => { return Err("".to_string()); }
-                }
-            },
-            '>' => {
-                chars.next();
-                match chars.peek() {
-                    Some('=') => { tokens.push(Token::CompareOperator(">=".to_string())); chars.next(); },
-                    Some(_) => { tokens.push(Token::CompareOperator(">".to_string())); chars.next(); },
-                    _ => { return Err("a".to_string()); }
-                }
-            },
-            '<' => {
-                chars.next();
-                match chars.peek() {
-                    Some('=') => { tokens.push(Token::CompareOperator("<=".to_string())); chars.next(); },
-                    Some(_) => { tokens.push(Token::CompareOperator("<".to_string())); chars.next(); },
-                    _ => { return Err("a".to_string()); }
-                }
-            },
-            _ if char.is_alphabetic() => { tokens.push(lex_identifier_or_keyword(&mut chars)?); },
-            _ if char.is_numeric() => { tokens.push(lex_number(&mut chars)?); },
-            _ => return Err(format!("想定外の文字 {}", char)),
-        }
-    }
-    tokens.push(Token::EOF);
-    return Ok(tokens);
-}
-
-/// 文字列の字句解析処理
-/// 
-/// ## Argments
-/// 
-/// - `chars` - プログラムの文字列
-/// 
-/// ## Return
-/// 
-/// - String型のトークン
-/// 
-/// ## Example
-/// 
-/// ```
-/// tokens.push(lex_string(&mut chars)?);
-/// ```
-fn lex_string(chars: &mut Peekable<Chars<'_>>) -> Result<Token, String> {
-    chars.next();  // 最初の「"」をスキップ
-    let mut string = String::new();
-    while let Some(&c) = chars.peek() {
-        if c == '"' || c == '\n' || c == '\r' { break; }
-        string.push(c);
-        chars.next();
-    }
-    // 閉じる「"」をスキップ
-    if chars.next() != Some('"') {
-        return Err("文字列が閉じられていない".to_string());
-    }
-    return Ok(Token::String(string));
-}
-
-/// スラッシュ記号の字句解析処理
-/// 
-/// ## Argments
-/// 
-/// - `chars` - プログラムの文字列
-/// 
-/// ## Return
-/// 
-/// - トークン
-/// 
-/// ## Example
-/// 
-/// ```
-/// let slash_string = lex_slash(&mut chars)?;
-/// match slash_string {
-///     Token::Comment => { continue; },
-///     _ => { tokens.push( slash_string ); },
-/// }
-/// ```
-fn lex_slash(chars: &mut Peekable<Chars<'_>>) -> Result<Token, String> {
-    chars.next();
-    match chars.peek() {
-        Some('/') => {
-            chars.next();
-            match chars.peek() {
-                Some('/') => {
-                    chars.next();
-                    let mut doc_comment = String::new();
-                    while let Some(c) = chars.next() {
-                        match c {
-                            '\n' => { break; }
-                            '\r' => {},
-                            _ => { doc_comment.push(c) },
-                        }
-                    }
-                    // 変数や関数を実数したとき実装
-                    return Ok(Token::DocComment(doc_comment));
-                },
-                _ => {
-                    while let Some(c) = chars.next() {
-                        if c == '\n' { break; }
-                    }
-                    return Ok(Token::Comment);
-                },
-            }
-        },
-        Some('*') => {
-            chars.next();
-            while let Some(c) = chars.next() {
-                if c == '*' {
-                    if let Some('/') = chars.peek() {
-                        chars.next();
-                        break;
-                    }
-                }
-                if chars.peek().is_none() {
-                    return Err("コメント中にファイル終了".to_string());
-                }
-            }
-            return Ok(Token::Comment);
-        },
-        Some(_) => {
-            chars.next();
-            return Ok(Token::MulAndDivOperator("/".to_string()));
-        },
-        None => {
-            return Err("'/'で入力終了".to_string()); // 入力が尽きた場合
-        },
-    } 
-}
-
-/// 関数、変数、bool値などの字句解析処理
-/// 
-/// ## Argments
-/// 
-/// - `chars` - プログラムの文字列
-/// 
-/// ## Return
-/// 
-/// - トークン
-/// 
-/// ## Example
-/// 
-/// ```
-/// tokens.push(lex_identifier_or_keyword(&mut chars)?);
-/// ```
-fn lex_identifier_or_keyword(chars: &mut Peekable<Chars<'_>>) -> Result<Token, String> {
-    let mut string = String::new();
-    while let Some(&c) = chars.peek() {
-        if !c.is_alphabetic() && !c.is_numeric() { break; }
-        string.push(c);
-        chars.next();
-    }
-    match string.as_str() {
-        "true" => { Ok(Token::Bool(true)) },
-        "false" => { Ok(Token::Bool(false)) },
-        _ => { Ok(Token::FunctionName(string)) },
-    }
-}
-
-/// 数値の字句解析処理
-/// 
-/// ## Argments
-/// 
-/// - `chars` - プログラムの文字列
-/// 
-/// ## Return
-/// 
-/// - トークン(Float, Int)
-/// 
-/// ## Example
-/// 
-/// ```
-/// tokens.push(lex_number(&mut chars)?);
-/// ```
-fn lex_number(chars: &mut Peekable<Chars<'_>>) -> Result<Token, String> {
-    let mut number_string = String::new();
-
-    while let Some(&c) = chars.peek() {
-        if c.is_numeric() {
-            number_string.push(c);
-            chars.next();
-        } else if c == '.' {
-            number_string.push(c);
-            chars.next();
-        } else if vec![' ', ')', '+', '-', '*', '/', '=', '!'].contains(&c) {
-            break;
-        } else {
-            number_string.push(c);
-            chars.next();
-            break;
-        }
-    }
-
-    if let Ok(float_value) = number_string.parse::<f64>() {
-        Ok(Token::Number(float_value))
-    } else {
-        Err(format!("無効なNumber型の数値 {}", number_string))
-    }
+    let lexer = Lexer::new(text);
+    lexer.tokenize()
 }
