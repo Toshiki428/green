@@ -1,4 +1,4 @@
-use crate::parser::{Node, NodeKind};
+use crate::{parser::{Node, NodeKind}, utils};
 
 #[derive(Debug)]
 enum ArgumentType {
@@ -35,10 +35,10 @@ pub fn execute(node: &Node) -> Result<(), String> {
         NodeKind::FunctionCall { name } => {
             match name.as_str() {
                 "print" => { print_function(node)?; },
-                _ => { return Err(format!("未定義の関数: {}", name)) },
+                _ => { return Err(utils::get_error_message("RUNTIME002", &[("function", name)])?) },
             }
         },
-        _ => return Err("想定外のNodeKind".to_string()),
+        _ => return Err(utils::get_error_message("RUNTIME003", &[])?),
     }
     Ok(())
 }
@@ -59,9 +59,9 @@ pub fn execute(node: &Node) -> Result<(), String> {
 /// print_function(node)?;
 /// ```
 fn print_function(node: &Node) -> Result<(), String> {
-    let argument = node.children.get(0).ok_or("'print'関数の引数がない")?;
+    let argument = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
     if argument.kind != NodeKind::Argument {
-        return Err("想定外の'print'関数の引数".to_string());
+        return Err(utils::get_error_message("RUNTIME005", &[])?);
     }
 
     let value = evaluate_argument(argument)?;
@@ -88,15 +88,15 @@ fn print_function(node: &Node) -> Result<(), String> {
 /// let result = evaluate_argument(node)?;
 /// ```
 fn evaluate_argument(node: &Node) -> Result<ArgumentType, String> {
-    let first_child = node.children.get(0).ok_or(format!("引数が空: {:?}", node))?;
+    let first_child = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
     match &first_child.kind {
         NodeKind::Expression => {
-            let expression_node = first_child.children.get(0).ok_or(format!("計算式が空: {:?}", first_child))?;
+            let expression_node = first_child.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
             let expression = evaluate_expression(expression_node)?;
             return Ok(expression);
         },
         NodeKind::Bool { value } => return Ok(ArgumentType::Bool(*value)),
-        _ => return Err("想定外の引数の型".to_string()),
+        _ => return Err(utils::get_error_message("RUNTIME005", &[])?),
     }
 }
 
@@ -118,13 +118,13 @@ fn evaluate_argument(node: &Node) -> Result<ArgumentType, String> {
 fn evaluate_expression(node: &Node) -> Result<ArgumentType, String> {
     match &node.kind {
         NodeKind::Compare { operator } => {
-            let left_node = node.children.get(0).ok_or(format!("式が無効: {:?}", node))?;
+            let left_node = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
             let left = evaluate_value(left_node)?;
             
             match operator.as_str() {
                 "" => Ok(left),
                 "==" | "!=" | ">=" | ">" | "<=" | "<" => {
-                    let right_node = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
+                    let right_node = node.children.get(1).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
                     let right = evaluate_value(right_node)?;
                     match (left, right) {
                         (ArgumentType::Number(left_value), ArgumentType::Number(right_value)) => {
@@ -135,7 +135,7 @@ fn evaluate_expression(node: &Node) -> Result<ArgumentType, String> {
                             match operator.as_str() {
                                 "==" => Ok(ArgumentType::Bool(left_value == right_value)),
                                 "!=" => Ok(ArgumentType::Bool(left_value != right_value)),
-                                _ => Err(format!("文字列に許可されていない比較演算子: {}", operator)),
+                                _ => Err(utils::get_error_message("RUNTIME006", &[("operator", operator)])?),
                             }
                         },
                         (left_value, right_value) => {
@@ -143,10 +143,10 @@ fn evaluate_expression(node: &Node) -> Result<ArgumentType, String> {
                         },
                     }
                 },
-                _ => Err(format!("想定外の比較演算子: {}", operator)),                    
+                _ => Err(utils::get_error_message("RUNTIME003", &[])?),                    
             }
         },        
-        _ => Err(format!("想定外の型: {:?}", node)),
+        _ => Err(utils::get_error_message("RUNTIME003", &[])?),
     }
 }
 
@@ -174,7 +174,7 @@ fn compare_values(operator: &str, left: f64, right: f64) -> Result<bool, String>
         ">" => Ok(left > right),
         "<=" => Ok(left <= right),
         "<" => Ok(left < right),
-        _ => Err(format!("想定外の比較演算子: {}", operator)),
+        _ => Err(utils::get_error_message("RUNTIME008", &[])?),
     }
 }
 
@@ -197,12 +197,12 @@ fn evaluate_value(node: &Node) -> Result<ArgumentType, String> {
     match &node.kind {
         NodeKind::String { value } => Ok(ArgumentType::String(value.to_string())),
         NodeKind::AddAndSub { operator } => {
-            let left = node.children.get(0).ok_or(format!("式が無効: {:?}", node))?;
+            let left = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
             match evaluate_value(left)? {
                 ArgumentType::Number(left_value) => {
                     match operator.as_str() {
                         "+" => {
-                            let right = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
+                            let right = node.children.get(1).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
                             if let ArgumentType::Number(right_value) = evaluate_value(right)?{
                                 return Ok(ArgumentType::Number(left_value + right_value));
                             } else {
@@ -210,7 +210,7 @@ fn evaluate_value(node: &Node) -> Result<ArgumentType, String> {
                             }
                         },
                         "-" => {
-                            let right = node.children.get(1).ok_or(format!("式が無効: {:?}", node))?;
+                            let right = node.children.get(1).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
                             if let ArgumentType::Number(right_value) = evaluate_value(right)?{
                                 return Ok(ArgumentType::Number(left_value - right_value));
                             } else {

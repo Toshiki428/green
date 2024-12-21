@@ -17,3 +17,15 @@
 <number> :== [0-9]+
 <bool> :== "true" | "false"
 ```
+
+## エラーコード
+```
+[カテゴリコード][番号]
+```
+
+- `[カテゴリコード]`
+  - CMD
+  - FILE
+  - SYNTAX
+  - RUNTIME
+  - ALL

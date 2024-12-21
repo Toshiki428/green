@@ -1,5 +1,5 @@
 use std::{iter::Peekable, vec::IntoIter};
-use crate::lexical_analyzer::{Token, TokenKind};
+use crate::{lexical_analyzer::{Token, TokenKind}, utils::{self, get_error_message_with_location}};
 
 #[derive(Debug, PartialEq)]
 pub enum NodeKind {
@@ -72,7 +72,7 @@ impl Parser {
                     self.tokens.next();
                     break;
                 },
-                _ => return Err(format!("想定外のToken(program): {:?}", token)),
+                _ => return Err(utils::get_error_message_with_location("PARSE002", token.row, token.col, &[])?),
             }
         }
 
@@ -88,28 +88,31 @@ impl Parser {
     /// 
     /// - Node
     fn parse_function_call(&mut self) -> Result<Node, String> {
-        let token = self.tokens.next().ok_or("トークンが不足")?;
+        let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         let function_name = if let TokenKind::FunctionName(name) = token.kind {
             name
         } else {
-            return Err("想定外の関数呼び出し".to_string());
+            return Err(get_error_message_with_location("PARSE004", token.row, token.col, &[])?);
         };
 
-        let token = self.tokens.next().ok_or("'('が不足")?;
-        if token.kind != TokenKind::LParen {
-            return Err("関数名の後には'('が必要".to_string())
-        }
+        match self.tokens.next() {
+            Some(token) if token.kind == TokenKind::LParen => {},
+            Some(token) => return Err(utils::get_error_message_with_location("PARSE005", token.row, token.col, &[])?),
+            _ => return Err(utils::get_error_message("PARSE003", &[])?),
+        };
 
         let argument = self.parse_argument()?;
-
-        let token = self.tokens.next().ok_or("')'が不足")?;
-        if token.kind != TokenKind::RParen {
-            return Err("引数の後には')'が必要".to_string());
+        
+        match self.tokens.next() {
+            Some(token) if token.kind == TokenKind::RParen => {},
+            Some(token) => return Err(utils::get_error_message_with_location("PARSE006", token.row, token.col, &[])?),
+            _ => return Err(utils::get_error_message("PARSE003", &[])?),
         }
 
-        let token = self.tokens.next().ok_or("';'が不足")?;
-        if token.kind != TokenKind::Semicolon {
-            return Err("関数呼び出しの後には';'が必要".to_string());
+        match self.tokens.next(){
+            Some(token) if token.kind == TokenKind::Semicolon => {},
+            Some(token) => return Err(utils::get_error_message_with_location("PARSE007", token.row, token.col, &[])?),
+            _ => return Err(utils::get_error_message("PARSE003", &[])?),
         }
 
         Ok(Node {
@@ -120,7 +123,7 @@ impl Parser {
 
     /// 引数の構文解析
     fn parse_argument(&mut self) -> Result<Node, String> {
-        let token = self.tokens.peek().ok_or("トークンが空")?;
+        let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         match token.kind {
             TokenKind::String(_) | TokenKind::Number(_) | TokenKind::AddAndSubOperator(_) | TokenKind::LParen => {
                 let expression = self.parse_expression()?;
@@ -136,7 +139,7 @@ impl Parser {
                     children: vec![bool_value],
                 })
             },
-            _ => Err("引数は(string, number, bool)のみ".to_string()),
+            _ => Err(utils::get_error_message_with_location("PARSE008", token.row, token.col, &[])?),
         }
     }
 
@@ -152,7 +155,7 @@ impl Parser {
     /// 比較式の構文解析
     fn parse_compare(&mut self) -> Result<Node, String> {
         let left = self.parse_value()?;
-        let token = self.tokens.peek().ok_or("トークンが空")?;
+        let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         let operator = if let TokenKind::CompareOperator(value) = token.kind.clone() {
             self.tokens.next();
             value
@@ -172,7 +175,7 @@ impl Parser {
 
     /// 値の構文解析
     fn parse_value(&mut self) -> Result<Node, String> {
-        let token = self.tokens.peek().ok_or("トークンが空")?;
+        let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         match token.kind {
             TokenKind::Number(_) | TokenKind::AddAndSubOperator(_) | TokenKind::LParen => {
                 let node = self.parse_add_and_sub()?;
@@ -182,7 +185,7 @@ impl Parser {
                 let node = self.parse_string()?;
                 Ok(node)
             },
-            _ => { Err(format!("想定外のToken(value):{:?}", token)) },
+            _ => { Err(utils::get_error_message_with_location("PARSE002", token.row, token.col, &[])?) },
         }
     }
 
@@ -218,7 +221,7 @@ impl Parser {
 
     /// 単項演算子の構文解析
     fn parse_unary(&mut self) -> Result<Node, String> {
-        let token = self.tokens.peek().ok_or("空のノード")?;
+        let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         match token.kind.clone() {
             TokenKind::Number(_) | TokenKind::LParen => {
                 let number = self.parse_primary()?;
@@ -235,13 +238,13 @@ impl Parser {
                     children: vec![number],
                 })
             },
-            _ => { Err(format!("想定外のToken(unary):{:?}", token)) },
+            _ => { Err(utils::get_error_message_with_location("PARSE002", token.row, token.col, &[])?) },
         }
     }
 
     /// 数値、計算式の'()'の構文解析
     fn parse_primary(&mut self) -> Result<Node, String> {
-        let token = self.tokens.peek().ok_or("トークンが空")?;
+        let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         match token.kind{
             TokenKind::Number(_) => {
                 let number = self.parse_number()?;
@@ -255,54 +258,55 @@ impl Parser {
                 let expr = self.parse_add_and_sub()?;
 
                 // 閉じカッコの確認
-                match self.tokens.next().ok_or("トークンが空")?.kind {
+                let next_token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
+                match next_token.kind {
                     TokenKind::RParen => Ok(Node {
                         kind: NodeKind::Primary,
                         children: vec![expr],
                     }),
-                    _ => Err("計算式の')'が必要".to_string()),
+                    _ => Err(utils::get_error_message_with_location("PARSE009", next_token.row, next_token.col, &[])?),
                 }
             },
-            _ => { Err(format!("想定外のToken(primary):{:?}", token)) },
+            _ => { Err(utils::get_error_message_with_location("PARSE002", token.row, token.col, &[])?) },
         }
     }
 
     /// String型の構文解析
     fn parse_string(&mut self) -> Result<Node, String> {
-        let token = self.tokens.next().ok_or("トークンが空")?;
+        let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         if let TokenKind::String(value) = token.kind {
             Ok(Node {
                 kind: NodeKind::String { value: value },
                 children: vec![],
             })
         } else {
-            Err("想定外のString型".to_string())
+            Err(utils::get_error_message_with_location("PARSE010", token.row, token.col, &[])?)
         }
     }
 
     /// Number型の構文解析
     fn parse_number(&mut self) -> Result<Node, String> {
-        let token = self.tokens.next().ok_or("空のトークン")?;
+        let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         if let TokenKind::Number(value) = token.kind {
             Ok(Node {
                 kind: NodeKind::Number { value },
                 children: vec![],
             })
         } else {
-            Err("想定外のNumber型".to_string())
+            Err(utils::get_error_message_with_location("PARSE011", token.row, token.col, &[])?)
         }
     }
 
     /// bool型の構文解析
     fn parse_bool(&mut self) -> Result<Node, String> {
-        let token = self.tokens.next().ok_or("空のトークン")?;
+        let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         if let TokenKind::Bool(value) = token.kind {
             Ok(Node {
                 kind: NodeKind::Bool { value: value },
                 children: vec![],
             })
         } else {
-            Err("想定外のbool型".to_string())
+            Err(utils::get_error_message_with_location("PARSE012", token.row, token.col, &[])?)
         }
     }
 }

@@ -1,5 +1,6 @@
-use std::{env, fs::File, io::{Result, Read}};
+use std::env;
 
+use green::utils;
 use green::cli_arg_parse;
 use green::lexical_analyzer;
 use green::parser;
@@ -7,18 +8,21 @@ use green::interpreter;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let config = match cli_arg_parse::Config::new(&args){
+    let config = match cli_arg_parse::Config::new(&args) {
         Ok(config) => config,
         Err(e) => {
-            eprintln!("コマンドライン解析エラー: {}", e);
+            eprintln!("{}", e);
             return;
         }
     };
     
-    let content = match load_file_content(&config.file_path) {
+    let content = match utils::load_file_content(&config.file_path) {
         Ok(content) => content,
-        Err(e) => {
-            eprintln!("Error reading file: {}", e);
+        Err(_) => {
+            match utils::get_error_message("FILE001", &[("file_name", &config.file_path)]) {
+                Ok(message) => eprintln!("{}", message),
+                Err(message) => eprintln!("{}", message),
+            }
             return;
         }
     };
@@ -26,7 +30,10 @@ fn main() {
     let tokens = match lexical_analyzer::lex(&content) {
         Ok(tokens) => tokens,
         Err(e) => {
-            eprintln!("字句エラー: {}", e);
+            match utils::get_error_message("LEX001", &[("message", &e)]) {
+                Ok(message) => eprintln!("{}", message),
+                Err(message) => eprintln!("{}", message),
+            }
             return;
         }
     };
@@ -34,45 +41,21 @@ fn main() {
     let ast = match parser::parse(tokens){
         Ok(node) => node,
         Err(e) => {
-            eprintln!("構文エラー: {}", e);
+            match utils::get_error_message("PARSE001", &[("message", &e)]) {
+                Ok(message) => eprintln!("{}", message),
+                Err(message) => eprintln!("{}", message),
+            }
             return;
         }
     };
 
     if config.option == cli_arg_parse::RunMode::Execute {
         if let Err(e) = interpreter::execute(&ast) {
-            eprintln!("実行エラー: {}", e);
+            match utils::get_error_message("RUNTIME001", &[("message", &e)]) {
+                Ok(message) => eprintln!("{}", message),
+                Err(message) => eprintln!("{}", message),
+            }
             return;
         }
     }
-}
-
-/// fileの読み込み
-/// 
-/// ## Argments
-/// 
-/// - `file_path` - 読み取りたいファイルのpath
-/// 
-/// ## Return
-/// 
-/// - 読み取ったファイルの中身の文字列
-/// 
-/// ## Example
-/// 
-/// ```
-/// let content = match load_file_content(file_path) {
-///     Ok(content) => content,
-///     Err(e) => {
-///         eprintln!("Error reading file: {}", e);
-///         return;
-///     }
-/// };
-/// ```
-fn load_file_content(file_path: &str) -> Result<String> {
-    let mut file = File::open(file_path)?;
-
-    let mut content = String::new();
-    file.read_to_string(&mut content)?;
-
-    return Ok(content);
 }

@@ -1,3 +1,5 @@
+use crate::utils;
+
 pub struct Config {
     pub option: RunMode,
     pub file_path: String,
@@ -14,7 +16,10 @@ impl RunMode {
         match s {
             "-exe" => Ok(RunMode::Execute),
             "-ana" => Ok(RunMode::Analysis),
-            _ => Err(format!("不正なオプション {}", s))
+            _ => {
+                let message = utils::get_error_message("CMD001", &[("option", s)])?;
+                Err(message)
+            }
         }
     }
 }
@@ -25,7 +30,7 @@ impl Config {
             3 => (args[1].clone(), args[2].clone()),
             2 => ("-exe".to_string(), args[1].clone()),
             1 => ("-exe".to_string(), "main.grn".to_string()),
-            _ => return Err("不正なコマンドライン引数の数".to_string()),
+            _ => return Err(utils::get_error_message("CMD002", &[])?),
         };
 
         let option = RunMode::from_str(&option_str)?;
