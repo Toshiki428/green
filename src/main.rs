@@ -1,9 +1,9 @@
 use std::{env, fs::File, io::{Result, Read}};
 
-mod cli_arg_parse;
-mod lexical_analyzer;
-mod parser;
-mod interpreter;
+use green::cli_arg_parse;
+use green::lexical_analyzer;
+use green::parser;
+use green::interpreter;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
