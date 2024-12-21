@@ -1,6 +1,8 @@
 use serde_json::Value;
 use std::{fs::File, io::Read};
 
+const JSON_DATA: &str = include_str!("../assets/error_message.json");
+
 /// エラーメッセージの取得
 pub fn get_error_message(code: &str, params: &[(&str, &str)]) -> Result<String, String> {
     let error_message = load_error_messages()?;
@@ -25,10 +27,7 @@ pub fn get_error_message_with_location(code: &str, row: u32, col: u32, params: &
 
 /// エラーメッセージのロード
 fn load_error_messages() -> Result<Value, String> {
-    let err_msg_str = load_file_content("assets/error_message.json")
-        .map_err(|e| format!("JSONファイル読み込みエラー: {}", e))?;
-
-    let error_message: Value = serde_json::from_str(&err_msg_str)
+    let error_message: Value = serde_json::from_str(JSON_DATA)
         .map_err(|e| format!("JSONパースエラー: {}", e))?;
 
     Ok(error_message)
