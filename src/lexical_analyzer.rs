@@ -4,15 +4,16 @@ use crate::utils;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
-    FunctionName(String),
-    String(String),
-    Number(f64),
-    Bool(bool),
+    Identifier(String),
+    StringLiteral(String),
+    NumberLiteral(String),
+    BoolLiteral(String),
     AddAndSubOperator(String),
     MulAndDivOperator(String),
     CompareOperator(String),
     LParen,
     RParen,
+    Equal,
     Semicolon,
     EOF,
     DocComment(String),
@@ -88,7 +89,7 @@ impl<'a> Lexer<'a> {
             return Err(utils::get_error_message_with_location("LEX003", self.row, self.col, &[])?);
         }
         self.next_char();   // 閉じる「"」をスキップ
-        self.push_token(TokenKind::String(string));
+        self.push_token(TokenKind::StringLiteral(string));
         Ok(())
     }
 
@@ -165,7 +166,7 @@ impl<'a> Lexer<'a> {
             operator.push(c);
             match operator.as_str() {
                 "==" => { self.push_token(TokenKind::CompareOperator(operator)); self.next_char(); },
-                _ => { return Err(utils::get_error_message_with_location("LEX005", self.row, self.col, &[("operator", &operator)])?); },
+                _ => { self.push_token(TokenKind::Equal); },
                 
             }
         }
@@ -222,9 +223,8 @@ impl<'a> Lexer<'a> {
             self.next_char();
         }
         match string.as_str() {
-            "true" => self.push_token_with_location(TokenKind::Bool(true), self.row, start_col),
-            "false" => self.push_token_with_location(TokenKind::Bool(false), self.row, start_col),
-            _ => self.push_token_with_location(TokenKind::FunctionName(string), self.row, start_col),
+            "true" | "false" => self.push_token_with_location(TokenKind::BoolLiteral(string), self.row, start_col),
+            _ => self.push_token_with_location(TokenKind::Identifier(string), self.row, start_col),
         }
 
         Ok(())
@@ -239,7 +239,7 @@ impl<'a> Lexer<'a> {
             if c.is_numeric() || c == '.' {
                 number_string.push(c);
                 self.next_char();
-            } else if vec![' ', ')', '+', '-', '*', '/', '=', '!', '\r', '\n'].contains(&c) {
+            } else if vec![' ', ')', ';', '+', '-', '*', '/', '=', '!', '\r', '\n'].contains(&c) {
                 break;
             } else {
                 number_string.push(c);
@@ -247,13 +247,12 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-    
-        if let Ok(value) = number_string.parse::<f64>() {
-            self.push_token_with_location(TokenKind::Number(value), self.row, start_col);
-        } else {
+
+        if let Err(_) = number_string.parse::<f64>() {
             return Err(utils::get_error_message_with_location("LEX006", self.row, start_col, &[("number", &number_string)])?);
         }
-
+    
+        self.push_token_with_location(TokenKind::NumberLiteral(number_string), self.row, start_col);
         Ok(())
     }
 
