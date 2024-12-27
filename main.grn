@@ -75,3 +75,5 @@ print(a);
 print(a+a == a*2);
 let a = "abc";
 print(a);
+a = "ab";
+let c = "b";

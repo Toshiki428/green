@@ -14,6 +14,7 @@ pub enum NodeKind {
     Program,
     FunctionCall { name: String },
     VariableDeclaration { name: String },
+    VariableAssignment { name: String },
     Argument,
     Variable { name: String },
     Compare { operator: String },
@@ -39,6 +40,7 @@ impl Node {
             NodeKind::FunctionCall { name } => println!("FunctionCall: {}", name),
             NodeKind::Argument => println!("Argument:"),
             NodeKind::VariableDeclaration { name } => println!("VariableDeclaration: {}", name),
+            NodeKind::VariableAssignment { name } => println!("VariableAssignment: {}", name),
             NodeKind::Variable { name } => println!("Variable: {}", name),
             NodeKind::Compare { operator } => println!("Compare: {}", operator),
             NodeKind::AddAndSub { operator } => println!("AddAndSub:{}", operator),
@@ -80,7 +82,7 @@ impl Parser {
                     match value.as_str() {
                         "print" => children.push(self.parse_function_call()?),
                         "let" => children.push(self.parse_variable_declaration()?),
-                        _ => return Err(utils::get_error_message_with_location("PARSE002", token.row, token.col, &[])?),
+                        _ => children.push(self.parse_variable_assignment()?),
                     }
                 },
                 TokenKind::EOF => {
@@ -161,6 +163,34 @@ impl Parser {
 
         Ok(Node {
             kind: NodeKind::VariableDeclaration { name },
+            children: vec![expression],
+        })
+    }
+
+    /// 変数の代入
+    fn parse_variable_assignment(&mut self) -> Result<Node, String> {
+        let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
+        let name = if let TokenKind::Identifier(name) = token.kind {
+            name
+        } else {
+            return Err(utils::get_error_message_with_location("PARSE013", token.row, token.col, &[])?);
+        };
+
+        let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
+        if token.kind != TokenKind::Equal {
+            return Err(utils::get_error_message_with_location("PARSE014", token.row, token.col, &[])?);
+        }
+
+        let expression = self.parse_expression()?;
+
+        match self.tokens.next() {
+            Some(token) if token.kind == TokenKind::Semicolon => {},
+            Some(token) => return Err(utils::get_error_message_with_location("PARSE015", token.row, token.col, &[])?),
+            _ => return Err(utils::get_error_message("PARSE003", &[])?),
+        }
+
+        Ok(Node {
+            kind: NodeKind::VariableAssignment { name },
             children: vec![expression],
         })
     }
@@ -301,7 +331,7 @@ impl Parser {
         }
     }
 
-    /// 変数の構文解析
+    /// 変数呼び出しの構文解析
     fn parse_variable(&mut self) -> Result<Node, String> {
         let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         if let TokenKind::Identifier(name) = token.kind {

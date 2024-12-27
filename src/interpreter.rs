@@ -37,6 +37,16 @@ impl Environment {
         Err(utils::get_error_message("RUNTIME", &[("variable", name)])?)
     }
 
+    fn change_variable(&mut self, name: String, value: GreenType) -> Result<(), String> {
+        if let Some(scope) = self.scopes.last_mut() {
+            if let Some(variable) = scope.get_mut(&name) {
+                *variable = value;
+                return Ok(());
+            }
+        }
+        Err(utils::get_error_message("RUNTIME007", &[("variable", &name)])?)
+    }
+
     // fn push_scope(&mut self) {
     //     self.scopes.push(HashMap::new());
     // }
@@ -67,6 +77,7 @@ impl Interpreter {
             },
             _ => return Err(utils::get_error_message("RUNTIME003", &[])?),
         }
+        println!("{:?}", self.variables);
         Ok(())
     }
 
@@ -82,6 +93,10 @@ impl Interpreter {
                 let expression = self.evaluate_assignable(node)?;
                 self.variables.set_variable(name.to_string(), expression);
             },
+            NodeKind::VariableAssignment { name } => {
+                let expression = self.evaluate_assignable(node)?;
+                self.variables.change_variable(name.to_string(), expression)?;
+            }
             _ => return Err(utils::get_error_message("RUNTIME003", &[])?),
         }
         Ok(())
