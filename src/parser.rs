@@ -1,5 +1,5 @@
 use std::{iter::Peekable, vec::IntoIter};
-use crate::{lexical_analyzer::{Token, TokenKind}, utils::{self, get_error_message_with_location}, operator::{Logical, UnaryLogical, BinaryLogical}};
+use crate::{lexical_analyzer::{Token, TokenKind}, operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Logical, UnaryArithmetic, UnaryLogical}, utils::{self, get_error_message_with_location}};
 
 #[derive(Debug, PartialEq)]
 pub enum LiteralValue {
@@ -19,9 +19,7 @@ pub enum NodeKind {
     Variable { name: String },
     Logical(Logical),
     Compare { operator: String },
-    AddAndSub { operator: String },
-    MulAndDiv { operator: String },
-    Unary { operator: String },
+    Arithmetic(Arithmetic),
     Literal(LiteralValue),
 }
 #[derive(Debug)]
@@ -52,9 +50,20 @@ impl Node {
                 }
             },
             NodeKind::Compare { operator } => println!("Compare: {}", operator),
-            NodeKind::AddAndSub { operator } => println!("AddAndSub:{}", operator),
-            NodeKind::MulAndDiv { operator } => println!("MulAndDiv:{}", operator),
-            NodeKind::Unary { operator } => println!("Unary: {}", operator),
+            NodeKind::Arithmetic(operator) => {
+                match operator {
+                    Arithmetic::Binary(bin_op) => {
+                        let op_chr = match bin_op {
+                            BinaryArithmetic::Add => '+',
+                            BinaryArithmetic::Subtract => '-',
+                            BinaryArithmetic::Multiply => '*',
+                            BinaryArithmetic::Divide => '/',
+                        };
+                        println!("BinaryArithmetic: {}", op_chr);
+                    },
+                    Arithmetic::Unary(_) => println!("UnaryArithmetic: -"),
+                }
+            },
             NodeKind::Literal ( literal ) => {
                 match literal {
                     LiteralValue::Int(value) => println!("Int: {}", value),
@@ -206,17 +215,11 @@ impl Parser {
 
     /// 引数の構文解析
     fn parse_argument(&mut self) -> Result<Node, String> {
-        let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
-        match token.kind {
-            TokenKind::StringLiteral(_) | TokenKind::NumberLiteral(_) | TokenKind::AddAndSubOperator(_) | TokenKind::LParen | TokenKind::BoolLiteral(_) | TokenKind::Identifier(_) => {
-                let assignable = self.parse_assignable()?;
-                Ok(Node {
-                    kind: NodeKind::Argument,
-                    children: vec![assignable],
-                })
-            },
-            _ => Err(utils::get_error_message_with_location("PARSE008", token.row, token.col, &[])?),
-        }
+        let assignable = self.parse_assignable()?;
+        Ok(Node {
+            kind: NodeKind::Argument,
+            children: vec![assignable],
+        })
     }
 
     /// 割り当て可能値の構文解析（引数、代入式の右辺）
@@ -224,7 +227,7 @@ impl Parser {
         let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         match token.kind.clone() {
             TokenKind::StringLiteral(_) | TokenKind::NumberLiteral(_) | TokenKind::BoolLiteral(_) 
-            | TokenKind::AddAndSubOperator(_) | TokenKind::LParen | TokenKind::Identifier(_) => {
+            | TokenKind::ArithmeticOperator(Arithmetic::Unary(_)) | TokenKind::LParen | TokenKind::Identifier(_) => {
                 return self.parse_expression();
             },
             _ => Err(utils::get_error_message_with_location("PARSE016", token.row, token.col, &[])?),
@@ -287,9 +290,7 @@ impl Parser {
                 })
             },
             TokenKind::BoolLiteral(_) => return self.parse_literal(),
-            _ => {
-                return self.parse_compare();
-            }
+            _ => return self.parse_compare(),
         }
     }
 
@@ -315,7 +316,8 @@ impl Parser {
     fn parse_value(&mut self) -> Result<Node, String> {
         let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         match token.kind {
-            TokenKind::NumberLiteral(_) | TokenKind::AddAndSubOperator(_) | TokenKind::LParen | TokenKind::Identifier(_) => {
+            TokenKind::NumberLiteral(_) | TokenKind::ArithmeticOperator(Arithmetic::Unary(_))
+            | TokenKind::LParen | TokenKind::Identifier(_) => {
                 return self.parse_add_and_sub()
             },
             TokenKind::StringLiteral(_) => return self.parse_literal(),
@@ -326,12 +328,15 @@ impl Parser {
     /// 足し算、引き算の構文解析
     fn parse_add_and_sub(&mut self) -> Result<Node, String> {
         let mut left = self.parse_mul_and_div()?;
-        while let Some(TokenKind::AddAndSubOperator(operator)) = self.tokens.peek().map(|t| &t.kind) {
-            let operator = operator.clone();
+        while let Some(TokenKind::ArithmeticOperator(Arithmetic::Unary(operator))) = self.tokens.peek().map(|t| &t.kind) {
+            let operator = match operator {
+                UnaryArithmetic::Plus => BinaryArithmetic::Add,
+                UnaryArithmetic::Minus => BinaryArithmetic::Subtract,
+            };
             self.tokens.next();
             let right = self.parse_mul_and_div()?;
             left = Node {
-                kind: NodeKind::AddAndSub { operator },
+                kind: NodeKind::Arithmetic(Arithmetic::Binary(operator)),
                 children: vec![left, right]
             };
         }
@@ -341,12 +346,12 @@ impl Parser {
     /// 掛け算、割り算の構文解析
     fn parse_mul_and_div(&mut self) -> Result<Node, String> {
         let mut left = self.parse_unary()?;
-        while let Some(TokenKind::MulAndDivOperator(operator)) = self.tokens.peek().map(|t| &t.kind) {
+        while let Some(TokenKind::ArithmeticOperator(Arithmetic::Binary(operator))) = self.tokens.peek().map(|t| &t.kind) {
             let operator = operator.clone();
             self.tokens.next();
             let right = self.parse_unary()?;
             left = Node {
-                kind: NodeKind::MulAndDiv { operator },
+                kind: NodeKind::Arithmetic(Arithmetic::Binary(operator)),
                 children: vec![left, right]
             };
         }
@@ -357,14 +362,15 @@ impl Parser {
     fn parse_unary(&mut self) -> Result<Node, String> {
         let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         match token.kind.clone() {
-            TokenKind::NumberLiteral(_) | TokenKind::LParen | TokenKind::Identifier(_) => {
+            TokenKind::NumberLiteral(_) | TokenKind::LParen | TokenKind::Identifier(_)
+            | TokenKind::ArithmeticOperator(Arithmetic::Unary(UnaryArithmetic::Plus))=> {
                 return self.parse_primary()
             },
-            TokenKind::AddAndSubOperator(operator) => {
+            TokenKind::ArithmeticOperator(Arithmetic::Unary(UnaryArithmetic::Minus)) => {
                 self.tokens.next();
                 let number = self.parse_primary()?;
                 Ok(Node {
-                    kind: NodeKind::Unary { operator: operator.to_string() },
+                    kind: NodeKind::Arithmetic(Arithmetic::Unary(UnaryArithmetic::Minus)),
                     children: vec![number],
                 })
             },

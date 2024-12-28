@@ -1,6 +1,6 @@
 use std::{iter::Peekable, str::Chars, vec};
 
-use crate::{utils, operator::{Logical, UnaryLogical, BinaryLogical}};
+use crate::{utils, operator::{Logical, UnaryLogical, BinaryLogical, Arithmetic, UnaryArithmetic, BinaryArithmetic}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
@@ -8,8 +8,7 @@ pub enum TokenKind {
     StringLiteral(String),
     NumberLiteral(String),
     BoolLiteral(String),
-    AddAndSubOperator(String),
-    MulAndDivOperator(String),
+    ArithmeticOperator(Arithmetic),
     CompareOperator(String),
     LogicalOperator(Logical),
     LParen,
@@ -53,9 +52,9 @@ impl<'a> Lexer<'a> {
                 '(' => {self.push_token(TokenKind::LParen); self.next_char();},
                 ')' => {self.push_token(TokenKind::RParen); self.next_char();},
                 ';' => {self.push_token(TokenKind::Semicolon); self.next_char();},
-                '+' => {self.push_token(TokenKind::AddAndSubOperator("+".to_string())); self.next_char();},
-                '-' => {self.push_token(TokenKind::AddAndSubOperator("-".to_string())); self.next_char();},
-                '*' => {self.push_token(TokenKind::MulAndDivOperator("*".to_string())); self.next_char();},
+                '+' => {self.push_token(TokenKind::ArithmeticOperator(Arithmetic::Unary(UnaryArithmetic::Plus))); self.next_char();},
+                '-' => {self.push_token(TokenKind::ArithmeticOperator(Arithmetic::Unary(UnaryArithmetic::Minus))); self.next_char();},
+                '*' => {self.push_token(TokenKind::ArithmeticOperator(Arithmetic::Binary(BinaryArithmetic::Multiply))); self.next_char();},
                 '/' => self.lex_slash()?,
                 '"' => self.lex_string()?,
                 '=' => self.lex_equal()?,
@@ -146,14 +145,14 @@ impl<'a> Lexer<'a> {
                 token_kind = TokenKind::Comment;
             },
             _ => {
-                token_kind = TokenKind::MulAndDivOperator("/".to_string());
+                token_kind = TokenKind::ArithmeticOperator(Arithmetic::Binary(BinaryArithmetic::Divide));
             },
         } 
 
         match token_kind {
             TokenKind::Comment => {},  // Commentはtokensに追加しない
             TokenKind::DocComment(_) => {},  // 一時的にDocCommentも追加しない
-            TokenKind::MulAndDivOperator(_) => {self.push_token_with_location(token_kind, start_row, start_col);},
+            TokenKind::ArithmeticOperator(_) => {self.push_token_with_location(token_kind, start_row, start_col);},
             _ => { self.push_token(token_kind); },
         }
         Ok(())

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{operator::{BinaryLogical, Logical, UnaryLogical}, parser::{LiteralValue, Node, NodeKind}, utils};
+use crate::{operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Logical, UnaryArithmetic, UnaryLogical}, parser::{LiteralValue, Node, NodeKind}, utils};
 
 #[derive(Debug, Clone)]
 enum GreenType {
@@ -128,8 +128,7 @@ impl Interpreter {
     fn evaluate_assignable(&mut self, node: &Node) -> Result<GreenType, String> {
         let child = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
         match &child.kind {
-            NodeKind::Compare { operator: _ } | NodeKind::AddAndSub { operator: _ } 
-            | NodeKind::MulAndDiv { operator: _ } | NodeKind::Unary { operator: _ }
+            NodeKind::Compare { operator: _ } | NodeKind::Arithmetic(_)
             | NodeKind::Variable { name: _ } | NodeKind::Logical(_) => {
                 self.evaluate_expression(child)
             },
@@ -194,7 +193,7 @@ impl Interpreter {
                 }
             },
             // 四則演算
-            NodeKind::AddAndSub { operator } | NodeKind::MulAndDiv { operator } => {
+            NodeKind::Arithmetic(Arithmetic::Binary(operator)) => {
                 let left = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
                 match self.evaluate_expression(left)? {
                     GreenType::Float(left_value) => {
@@ -204,22 +203,21 @@ impl Interpreter {
                         } else {
                             return Err(format!("無効な演算: {:?}", node));
                         };
-                        match operator.as_str() {
-                            "+" => Ok(GreenType::Float(left_value + right_value)),
-                            "-" => Ok(GreenType::Float(left_value - right_value)),
-                            "*" => Ok(GreenType::Float(left_value * right_value)),
-                            "/" => Ok(GreenType::Float(left_value / right_value)),
-                            _ => Err(format!("想定外の演算子: {}", operator)),
+                        match operator {
+                            BinaryArithmetic::Add => Ok(GreenType::Float(left_value + right_value)),
+                            BinaryArithmetic::Subtract => Ok(GreenType::Float(left_value - right_value)),
+                            BinaryArithmetic::Multiply => Ok(GreenType::Float(left_value * right_value)),
+                            BinaryArithmetic::Divide => Ok(GreenType::Float(left_value / right_value)),
                         }
                     },
                     _ => Err(format!("想定外のAddAndSub型: {:?}", node))
                 }
             },
-            NodeKind::Unary { operator } => {
+            NodeKind::Arithmetic(Arithmetic::Unary(operator)) => {
                 let number = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
                 if let GreenType::Float(value) = self.evaluate_expression(number)?{
                     let mut result = value;
-                    if operator == "-" {
+                    if *operator == UnaryArithmetic::Minus {
                         result = -1.0 * value;
                     }
                     Ok(GreenType::Float(result))
