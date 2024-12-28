@@ -1,6 +1,6 @@
 use std::{iter::Peekable, str::Chars, vec};
 
-use crate::utils;
+use crate::{utils, operator::{Logical, UnaryLogical, BinaryLogical}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
@@ -11,6 +11,7 @@ pub enum TokenKind {
     AddAndSubOperator(String),
     MulAndDivOperator(String),
     CompareOperator(String),
+    LogicalOperator(Logical),
     LParen,
     RParen,
     Equal,
@@ -224,6 +225,10 @@ impl<'a> Lexer<'a> {
         }
         match string.as_str() {
             "true" | "false" => self.push_token_with_location(TokenKind::BoolLiteral(string), self.row, start_col),
+            "or" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Or)), self.row, self.col),
+            "and" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::And)), self.row, self.col),
+            "xor" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Xor)), self.row, self.col),
+            "not" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Unary(UnaryLogical::Not)), self.row, self.col),
             _ => self.push_token_with_location(TokenKind::Identifier(string), self.row, start_col),
         }
 

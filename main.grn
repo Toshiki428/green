@@ -77,3 +77,7 @@ let a = "abc";
 print(a);
 a = "ab";
 let c = "b";
+print(c == "b");
+print(true and false or true and true and 10 == 10);
+let d = false;
+print(true xor d);

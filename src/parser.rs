@@ -1,5 +1,5 @@
 use std::{iter::Peekable, vec::IntoIter};
-use crate::{lexical_analyzer::{Token, TokenKind}, utils::{self, get_error_message_with_location}};
+use crate::{lexical_analyzer::{Token, TokenKind}, utils::{self, get_error_message_with_location}, operator::{Logical, UnaryLogical, BinaryLogical}};
 
 #[derive(Debug, PartialEq)]
 pub enum LiteralValue {
@@ -17,6 +17,7 @@ pub enum NodeKind {
     VariableAssignment { name: String },
     Argument,
     Variable { name: String },
+    Logical(Logical),
     Compare { operator: String },
     AddAndSub { operator: String },
     MulAndDiv { operator: String },
@@ -42,6 +43,14 @@ impl Node {
             NodeKind::VariableDeclaration { name } => println!("VariableDeclaration: {}", name),
             NodeKind::VariableAssignment { name } => println!("VariableAssignment: {}", name),
             NodeKind::Variable { name } => println!("Variable: {}", name),
+            NodeKind::Logical(operator) => {
+                match operator {
+                    Logical::Binary(BinaryLogical::Or) => println!("Logical: or"),
+                    Logical::Binary(BinaryLogical::And) => println!("Logial: and"),
+                    Logical::Binary(BinaryLogical::Xor) => println!("Logical: xor"),
+                    Logical::Unary(UnaryLogical::Not) => println!("Logical: not"),
+                }
+            },
             NodeKind::Compare { operator } => println!("Compare: {}", operator),
             NodeKind::AddAndSub { operator } => println!("AddAndSub:{}", operator),
             NodeKind::MulAndDiv { operator } => println!("MulAndDiv:{}", operator),
@@ -224,10 +233,63 @@ impl Parser {
 
     /// 式の構文解析
     fn parse_expression(&mut self) -> Result<Node, String> {
+        self.parse_logical()
+    }
+
+    /// 論理演算の構文解析
+    fn parse_logical(&mut self) -> Result<Node, String> {
+        self.parse_or_expr()
+    }
+
+    /// OR演算の構文解析
+    fn parse_or_expr(&mut self) -> Result<Node, String> {
+        let mut left = self.parse_and_expr()?;
+        while let Some(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Or))) = self.tokens.peek().map(|t| &t.kind) {
+            self.tokens.next();
+            let right = self.parse_and_expr()?;
+            left = Node {
+                kind: NodeKind::Logical(Logical::Binary(BinaryLogical::Or)),
+                children: vec![left, right]
+            };
+        }
+        Ok(left)
+    }
+
+    /// AND演算の構文解析
+    fn parse_and_expr(&mut self) -> Result<Node, String> {
+        let mut left = self.parse_not_expr()?;
+        while let Some(TokenKind::LogicalOperator(operator)) = self.tokens.peek().map(|t| &t.kind) {
+            let operator = operator.clone();
+            if operator == Logical::Binary(BinaryLogical::And) || operator == Logical::Binary(BinaryLogical::Xor) {
+                self.tokens.next();
+                let right = self.parse_not_expr()?;
+                left = Node {
+                    kind: NodeKind::Logical(operator),
+                    children: vec![left, right]
+                };
+            } else {
+                break;
+            }
+        }
+        Ok(left)
+    }
+
+    /// NOT演算の構文解析
+    fn parse_not_expr(&mut self) -> Result<Node, String> {
         let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
+        println!("{:?}", token);
         match token.kind {
+            TokenKind::LogicalOperator(Logical::Unary(UnaryLogical::Not)) => {
+                let value = self.parse_expression()?;
+                Ok(Node {
+                    kind: NodeKind::Logical(Logical::Unary(UnaryLogical::Not)),
+                    children: vec![value],
+                })
+            },
             TokenKind::BoolLiteral(_) => return self.parse_literal(),
-            _ => return self.parse_compare(),
+            _ => {
+                return self.parse_compare();
+            }
         }
     }
 
@@ -236,12 +298,12 @@ impl Parser {
         let left = self.parse_value();
         let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         let operator = if let TokenKind::CompareOperator(value) = token.kind.clone() {
-            self.tokens.next();
             value
         } else {
             return left
         };
-
+        
+        self.tokens.next();
         let right = self.parse_value()?;
         return Ok(Node {
             kind: NodeKind::Compare { operator },

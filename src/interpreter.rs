@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{parser::{LiteralValue, Node, NodeKind}, utils};
+use crate::{operator::{BinaryLogical, Logical, UnaryLogical}, parser::{LiteralValue, Node, NodeKind}, utils};
 
 #[derive(Debug, Clone)]
 enum GreenType {
@@ -130,7 +130,7 @@ impl Interpreter {
         match &child.kind {
             NodeKind::Compare { operator: _ } | NodeKind::AddAndSub { operator: _ } 
             | NodeKind::MulAndDiv { operator: _ } | NodeKind::Unary { operator: _ }
-            | NodeKind::Variable { name: _ } => {
+            | NodeKind::Variable { name: _ } | NodeKind::Logical(_) => {
                 self.evaluate_expression(child)
             },
             NodeKind::Literal(_) => self.evaluate_literal(child),
@@ -141,6 +141,34 @@ impl Interpreter {
     /// 式の評価
     fn evaluate_expression(&mut self, node: &Node) -> Result<GreenType, String> {
         match &node.kind {
+            NodeKind::Logical(logical) => {
+                match logical {
+                    Logical::Unary(operator) => {
+                        let node = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
+                        if let GreenType::Bool(value)  = self.evaluate_expression(node)? {
+                            let result = self.unary_logical_operations(operator, value)?;
+                            Ok(GreenType::Bool(result))
+                        } else {
+                            Err(format!("想定外の論理演算: 演算子: {:?} 値: {:?}", operator, node))
+                        }
+                    },
+                    Logical::Binary(operator) => {
+                        let left_node = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
+                        let left = self.evaluate_expression(left_node)?;
+                        let right_node = node.children.get(1).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
+                        let right = self.evaluate_expression(right_node)?;
+                        match (left, right) {
+                            (GreenType::Bool(left_value), GreenType::Bool(right_value)) => {
+                                let result = self.binary_logical_operations(operator, left_value, right_value)?;
+                                Ok(GreenType::Bool(result))
+                            },
+                            (left_value, right_value) => {
+                                Err(format!("想定外の論理演算: 左: {:?} 演算子: {:?} 右: {:?}", left_value, operator, right_value))
+                            },
+                        }
+                    },
+                }
+            },
             NodeKind::Compare { operator } => {
                 let left_node = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
                 let left = self.evaluate_expression(left_node)?;
@@ -205,6 +233,22 @@ impl Interpreter {
             },
             NodeKind::Literal(_) => self.evaluate_literal(node),
             _ => Err(utils::get_error_message("RUNTIME003", &[])?),
+        }
+    }
+
+    /// 単項論理演算
+    fn unary_logical_operations(&mut self, operator: &UnaryLogical, operand: bool) -> Result<bool, String> {
+        match operator {
+            UnaryLogical::Not => Ok(!operand),
+        }
+    }
+
+    /// 二項論理演算子
+    fn binary_logical_operations(&mut self, operator: &BinaryLogical, left: bool, right: bool) -> Result<bool, String> {
+        match operator {
+            BinaryLogical::Or => Ok(left || right),
+            BinaryLogical::And => Ok(left && right),
+            BinaryLogical::Xor => Ok(left && !right || !left && right),
         }
     }
 
