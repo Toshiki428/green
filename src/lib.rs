@@ -4,3 +4,4 @@ pub mod interpreter;
 pub mod lexical_analyzer;
 pub mod parser;
 pub mod operator;
+pub mod keyword;

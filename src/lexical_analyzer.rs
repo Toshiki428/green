@@ -1,13 +1,13 @@
 use std::{iter::Peekable, str::Chars, vec};
 
-use crate::{utils, operator::{Logical, UnaryLogical, BinaryLogical, Arithmetic, UnaryArithmetic, BinaryArithmetic, Comparison}};
+use crate::{utils, operator::{Logical, UnaryLogical, BinaryLogical, Arithmetic, UnaryArithmetic, BinaryArithmetic, Comparison}, keyword::BoolValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     Identifier(String),
     StringLiteral(String),
     NumberLiteral(String),
-    BoolLiteral(String),
+    BoolLiteral(BoolValue),
     ArithmeticOperator(Arithmetic),
     CompareOperator(Comparison),
     LogicalOperator(Logical),
@@ -226,7 +226,8 @@ impl<'a> Lexer<'a> {
             self.next_char();
         }
         match string.as_str() {
-            "true" | "false" => self.push_token_with_location(TokenKind::BoolLiteral(string), self.row, start_col),
+            "true" => self.push_token_with_location(TokenKind::BoolLiteral(BoolValue::True), self.row, start_col),
+            "false" => self.push_token_with_location(TokenKind::BoolLiteral(BoolValue::False), self.row, start_col),
             "or" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Or)), self.row, self.col),
             "and" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::And)), self.row, self.col),
             "xor" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Xor)), self.row, self.col),

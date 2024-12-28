@@ -1,5 +1,5 @@
 use std::{iter::Peekable, vec::IntoIter};
-use crate::{lexical_analyzer::{Token, TokenKind}, operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Logical, UnaryArithmetic, UnaryLogical, Comparison}, utils::{self, get_error_message_with_location}};
+use crate::{lexical_analyzer::{Token, TokenKind}, operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Logical, UnaryArithmetic, UnaryLogical, Comparison}, keyword::BoolValue, utils::{self, get_error_message_with_location}};
 
 #[derive(Debug, PartialEq)]
 pub enum LiteralValue {
@@ -441,20 +441,19 @@ impl Parser {
                 }
             },
             TokenKind::BoolLiteral(value) => {
-                match value.as_str() {
-                    "true" => {
+                match value {
+                    BoolValue::True => {
                         return Ok(Node {
                             kind: NodeKind::Literal(LiteralValue::Bool(true)),
                             children: vec![],
                         });
                     },
-                    "false" => {
+                    BoolValue::False => {
                         return Ok(Node {
                             kind: NodeKind::Literal(LiteralValue::Bool(false)),
                             children: vec![],
                         });
                     },
-                    _ => {},
                 }
             },
             _ => {}
