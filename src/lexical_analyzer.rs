@@ -1,6 +1,6 @@
 use std::{iter::Peekable, str::Chars, vec};
 
-use crate::{utils, operator::{Logical, UnaryLogical, BinaryLogical, Arithmetic, UnaryArithmetic, BinaryArithmetic}};
+use crate::{utils, operator::{Logical, UnaryLogical, BinaryLogical, Arithmetic, UnaryArithmetic, BinaryArithmetic, Comparison}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
@@ -9,7 +9,7 @@ pub enum TokenKind {
     NumberLiteral(String),
     BoolLiteral(String),
     ArithmeticOperator(Arithmetic),
-    CompareOperator(String),
+    CompareOperator(Comparison),
     LogicalOperator(Logical),
     LParen,
     RParen,
@@ -165,7 +165,7 @@ impl<'a> Lexer<'a> {
         if let Some(&c) = self.chars.peek() {
             operator.push(c);
             match operator.as_str() {
-                "==" => { self.push_token(TokenKind::CompareOperator(operator)); self.next_char(); },
+                "==" => { self.push_token(TokenKind::CompareOperator(Comparison::Equal)); self.next_char(); },
                 _ => { self.push_token(TokenKind::Equal); },
                 
             }
@@ -180,7 +180,7 @@ impl<'a> Lexer<'a> {
         if let Some(&c) = self.chars.peek() {
             operator.push(c);
             match operator.as_str() {
-                "!=" => { self.push_token(TokenKind::CompareOperator(operator)); self.next_char(); },
+                "!=" => { self.push_token(TokenKind::CompareOperator(Comparison::NotEqual)); self.next_char(); },
                 _ => { return Err(utils::get_error_message_with_location("LEX005", self.row, self.col, &[("operator", &operator)])?); },
             }
         }
@@ -207,7 +207,10 @@ impl<'a> Lexer<'a> {
             }
         }
         match operator.as_str() {
-            "<=" | "<" | ">=" | ">" => {self.push_token(TokenKind::CompareOperator(operator));},
+            "<=" => self.push_token(TokenKind::CompareOperator(Comparison::LessEqual)),
+            "<" => self.push_token(TokenKind::CompareOperator(Comparison::Less)),
+            ">=" => self.push_token(TokenKind::CompareOperator(Comparison::GreaterEqual)),
+            ">" => self.push_token(TokenKind::CompareOperator(Comparison::Greater)),
             _ => { return Err(utils::get_error_message_with_location("LEX005", self.row, start_col, &[("operator", &operator)])?); }
         }
         Ok(())

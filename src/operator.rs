@@ -3,10 +3,12 @@ pub enum Logical {
     Unary(UnaryLogical),
     Binary(BinaryLogical),
 }
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryLogical {
     Not,
 }
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryLogical {
     Or,
@@ -32,4 +34,14 @@ pub enum BinaryArithmetic {
     Subtract,
     Multiply,
     Divide,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Comparison {
+    Equal,         // ==
+    NotEqual,      // !=
+    Greater,       // >
+    Less,          // <
+    GreaterEqual,  // >=
+    LessEqual,     // <=
 }

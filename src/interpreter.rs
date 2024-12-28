@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Logical, UnaryArithmetic, UnaryLogical}, parser::{LiteralValue, Node, NodeKind}, utils};
+use crate::{operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Logical, UnaryArithmetic, UnaryLogical, Comparison}, parser::{LiteralValue, Node, NodeKind}, utils};
 
 #[derive(Debug, Clone)]
 enum GreenType {
@@ -128,7 +128,7 @@ impl Interpreter {
     fn evaluate_assignable(&mut self, node: &Node) -> Result<GreenType, String> {
         let child = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
         match &child.kind {
-            NodeKind::Compare { operator: _ } | NodeKind::Arithmetic(_)
+            NodeKind::Compare(_) | NodeKind::Arithmetic(_)
             | NodeKind::Variable { name: _ } | NodeKind::Logical(_) => {
                 self.evaluate_expression(child)
             },
@@ -168,7 +168,7 @@ impl Interpreter {
                     },
                 }
             },
-            NodeKind::Compare { operator } => {
+            NodeKind::Compare(operator) => {
                 let left_node = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
                 let left = self.evaluate_expression(left_node)?;
                 
@@ -181,10 +181,10 @@ impl Interpreter {
                         Ok(GreenType::Bool(result))
                     },
                     (GreenType::String(left_value), GreenType::String(right_value)) => {
-                        match operator.as_str() {
-                            "==" => Ok(GreenType::Bool(left_value == right_value)),
-                            "!=" => Ok(GreenType::Bool(left_value != right_value)),
-                            _ => Err(utils::get_error_message("RUNTIME006", &[("operator", operator)])?),
+                        match operator {
+                            Comparison::Equal => Ok(GreenType::Bool(left_value == right_value)),
+                            Comparison::NotEqual => Ok(GreenType::Bool(left_value != right_value)),
+                            _ => Err(utils::get_error_message("RUNTIME006", &[("operator", format!("{:?}", operator).as_str())])?),
                         }
                     },
                     (left_value, right_value) => {
@@ -251,15 +251,14 @@ impl Interpreter {
     }
 
     /// 比較処理
-    fn compare_values(&mut self, operator: &str, left: f64, right: f64) -> Result<bool, String> {
+    fn compare_values(&mut self, operator: &Comparison, left: f64, right: f64) -> Result<bool, String> {
         match operator {
-            "==" => Ok(left == right),
-            "!=" => Ok(left != right),
-            ">=" => Ok(left >= right),
-            ">" => Ok(left > right),
-            "<=" => Ok(left <= right),
-            "<" => Ok(left < right),
-            _ => Err(utils::get_error_message("RUNTIME008", &[])?),
+            Comparison::Equal => Ok(left == right),
+            Comparison::NotEqual => Ok(left != right),
+            Comparison::GreaterEqual => Ok(left >= right),
+            Comparison::Greater => Ok(left > right),
+            Comparison::LessEqual => Ok(left <= right),
+            Comparison::Less => Ok(left < right),
         }
     }
 

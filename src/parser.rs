@@ -1,5 +1,5 @@
 use std::{iter::Peekable, vec::IntoIter};
-use crate::{lexical_analyzer::{Token, TokenKind}, operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Logical, UnaryArithmetic, UnaryLogical}, utils::{self, get_error_message_with_location}};
+use crate::{lexical_analyzer::{Token, TokenKind}, operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Logical, UnaryArithmetic, UnaryLogical, Comparison}, utils::{self, get_error_message_with_location}};
 
 #[derive(Debug, PartialEq)]
 pub enum LiteralValue {
@@ -18,7 +18,7 @@ pub enum NodeKind {
     Argument,
     Variable { name: String },
     Logical(Logical),
-    Compare { operator: String },
+    Compare(Comparison),
     Arithmetic(Arithmetic),
     Literal(LiteralValue),
 }
@@ -49,7 +49,17 @@ impl Node {
                     Logical::Unary(UnaryLogical::Not) => println!("Logical: not"),
                 }
             },
-            NodeKind::Compare { operator } => println!("Compare: {}", operator),
+            NodeKind::Compare(operator) => {
+                let op_str = match operator {
+                    Comparison::Equal => "==",
+                    Comparison::NotEqual => "!=",
+                    Comparison::Greater => ">",
+                    Comparison::GreaterEqual => ">=",
+                    Comparison::Less => "<",
+                    Comparison::LessEqual => "<=",
+                };
+                println!("Compare: {}", op_str)
+            },
             NodeKind::Arithmetic(operator) => {
                 match operator {
                     Arithmetic::Binary(bin_op) => {
@@ -307,7 +317,7 @@ impl Parser {
         self.tokens.next();
         let right = self.parse_value()?;
         return Ok(Node {
-            kind: NodeKind::Compare { operator },
+            kind: NodeKind::Compare(operator),
             children: vec![left?, right]
         });
     }
