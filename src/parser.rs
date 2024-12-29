@@ -1,5 +1,5 @@
 use std::{iter::Peekable, vec::IntoIter};
-use crate::{lexical_analyzer::{Token, TokenKind}, operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Logical, UnaryArithmetic, UnaryLogical, Comparison}, keyword::BoolValue, utils::{self, get_error_message_with_location}};
+use crate::{keyword::{BoolValue, Keyword}, lexical_analyzer::{Token, TokenKind}, operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, utils::{self, get_error_message_with_location}};
 
 #[derive(Debug, PartialEq)]
 pub enum LiteralValue {
@@ -21,6 +21,7 @@ pub enum NodeKind {
     Compare(Comparison),
     Arithmetic(Arithmetic),
     Literal(LiteralValue),
+    IfStatement,
 }
 #[derive(Debug)]
 pub struct Node {
@@ -82,6 +83,34 @@ impl Node {
                     LiteralValue::Bool(value) => println!("Bool: {}", value),
                 }
             },
+            NodeKind::IfStatement => {
+                println!("IfStatement:");
+                if let Some(condition) = self.children.get(0) {
+                    for _ in 0..(depth + 1) {
+                        print!("  ");
+                    }
+                    println!("Condition:");
+                    condition.print(depth + 2); // 再帰的にツリーを表示
+                }
+
+                if let Some(then_block) = self.children.get(1) {
+                    for _ in 0..(depth + 1) {
+                        print!("  ");
+                    }
+                    println!("Then Block:");
+                    then_block.print(depth + 2);
+                }
+
+                if let Some(else_block) = self.children.get(2) {
+                    for _ in 0..(depth + 1) {
+                        print!("  ");
+                    }
+                    println!("Else Block:");
+                    else_block.print(depth + 2);
+                }
+
+                return;
+            },
         }
         for child in &self.children {
             child.print(depth + 1);
@@ -101,18 +130,29 @@ impl Parser {
     }
 
     /// ルートの構文解析
-    fn parse_program(&mut self) -> Result<Node, String> {
+    fn parse_program(&mut self, scope_end: Option<TokenKind>) -> Result<Node, String> {
         let mut children = Vec::new();
 
         while let Some(token) = self.tokens.peek() {
+            if let Some(end) = &scope_end {
+                if &token.kind == end {
+                    break;
+                }
+            }
             match &token.kind {
                 TokenKind::Identifier(value) => {
                     match value.as_str() {
                         "print" => children.push(self.parse_function_call()?),
-                        "let" => children.push(self.parse_variable_declaration()?),
                         _ => children.push(self.parse_variable_assignment()?),
                     }
                 },
+                TokenKind::Keyword(keyword) => {
+                    match keyword {
+                        Keyword::Let => children.push(self.parse_variable_declaration()?),
+                        Keyword::If => children.push(self.parse_if_statement()?),
+                        _ => {},
+                    }
+                }
                 TokenKind::EOF => {
                     self.tokens.next();
                     break;
@@ -124,6 +164,67 @@ impl Parser {
         Ok(Node { 
             kind: NodeKind::Program, 
             children: children 
+        })
+    }
+
+    fn parse_if_statement(&mut self) -> Result<Node, String> {
+        self.tokens.next();
+
+        match self.tokens.next() {
+            Some(token) if token.kind == TokenKind::LParen => {},
+            Some(token) => return Err(utils::get_error_message_with_location("PARSE018", token.row, token.col, &[])?),
+            _ => return Err(utils::get_error_message("PARSE003", &[])?),
+        };
+
+        let condition = self.parse_expression()?;
+
+        match self.tokens.next() {
+            Some(token) if token.kind == TokenKind::RParen => {},
+            Some(token) => return Err(utils::get_error_message_with_location("PARSE019", token.row, token.col, &[])?),
+            _ => return Err(utils::get_error_message("PARSE003", &[])?),
+        }
+
+        match self.tokens.next() {
+            Some(token) if token.kind == TokenKind::LBrace => {},
+            Some(token) => return Err(utils::get_error_message_with_location("PARSE020", token.row, token.col, &[])?),
+            _ => return Err(utils::get_error_message("PARSE003", &[])?),
+        };
+
+        let then_block = self.parse_program(Some(TokenKind::RBrace))?;
+
+        match self.tokens.next() {
+            Some(token) if token.kind == TokenKind::RBrace => {},
+            Some(token) => return Err(utils::get_error_message_with_location("PARSE021", token.row, token.col, &[])?),
+            _ => return Err(utils::get_error_message("PARSE003", &[])?),
+        };
+
+        let mut children = vec![condition, then_block];
+
+        match self.tokens.peek() {
+            Some(token) if token.kind == TokenKind::Keyword(Keyword::Else) => {
+                self.tokens.next();
+                match self.tokens.next() {
+                    Some(token) if token.kind == TokenKind::LBrace => {},
+                    Some(token) => return Err(utils::get_error_message_with_location("PARSE020", token.row, token.col, &[])?),
+                    _ => return Err(utils::get_error_message("PARSE003", &[])?),
+                };
+        
+                let else_block = self.parse_program(Some(TokenKind::RBrace))?;
+        
+                match self.tokens.next() {
+                    Some(token) if token.kind == TokenKind::RBrace => {},
+                    Some(token) => return Err(utils::get_error_message_with_location("PARSE021", token.row, token.col, &[])?),
+                    _ => return Err(utils::get_error_message("PARSE003", &[])?),
+                };
+
+                children.push(else_block);
+            },
+            _ => {},
+        }
+
+        Ok(Node {
+            kind: NodeKind::IfStatement,
+            children: children,
         })
     }
 
@@ -466,6 +567,6 @@ impl Parser {
 /// 構文解析を行う
 pub fn parse(tokens: Vec<Token>) -> Result<Node, String> {
     let mut parser = Parser::new(tokens);
-    let node = parser.parse_program()?;
+    let node = parser.parse_program(None)?;
     Ok(node)
 }

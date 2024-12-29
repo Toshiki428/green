@@ -81,3 +81,9 @@ print(c == "b");
 print(true and false or true and true and 10 == 10);
 let d = false;
 print(true xor d);
+
+if (10 > 3) {
+    print("OK");
+} else {
+    print("NG");
+}

@@ -2,8 +2,11 @@
 
 ## 構文
 ```txt
-<program> ::= (<statement>)*
-<statement> ::= (<function_call> | <variable_declaration>) ";"
+<program> ::= <statements>
+<statements> ::= <statement> | <statements> <statement>
+<statement> ::= <function_call> | <variable_declaration> | <if_statement>
+<if_statement> ::= "if" "(" <assignable> ")" <block> [ "else" <block> ]
+<block> ::= "{" <statements> "}"
 <function_call> ::= <function_name> "(" <argument> ")"
 <function_name> ::= "print"
 <argument> ::= <assignable>

@@ -77,7 +77,6 @@ impl Interpreter {
             },
             _ => return Err(utils::get_error_message("RUNTIME003", &[])?),
         }
-        println!("{:?}", self.variables);
         Ok(())
     }
 
@@ -90,13 +89,14 @@ impl Interpreter {
                 }
             },
             NodeKind::VariableDeclaration { name } => {
-                let expression = self.evaluate_assignable(node)?;
+                let expression = self.evaluate_assignable(&node.children[0])?;
                 self.variables.set_variable(name.to_string(), expression);
             },
             NodeKind::VariableAssignment { name } => {
-                let expression = self.evaluate_assignable(node)?;
+                let expression = self.evaluate_assignable(&node.children[0])?;
                 self.variables.change_variable(name.to_string(), expression)?;
-            }
+            },
+            NodeKind::IfStatement => self.evaluate_if_statement(node)?,
             _ => return Err(utils::get_error_message("RUNTIME003", &[])?),
         }
         Ok(())
@@ -119,20 +119,35 @@ impl Interpreter {
         Ok(())
     }
 
+    fn evaluate_if_statement(&mut self, node: &Node) -> Result<(), String> {
+        let condition_node = &node.children[0];
+        if let GreenType::Bool(condition_result) = self.evaluate_assignable(&condition_node)? {
+            if condition_result {
+                let then_block = &node.children[1];
+                self.execute(then_block)?;
+            } else {
+                let else_block = &node.children[2];
+                self.execute(else_block)?;
+            }
+        } else {
+            return Err(format!("if文の条件が正しくない"))
+        }
+        Ok(())
+    }
+
     /// 引数の評価
     fn evaluate_argument(&mut self, node: &Node) -> Result<GreenType, String> {
-        return self.evaluate_assignable(node)
+        return self.evaluate_assignable(&node.children[0])
     }
 
     /// 割り当て可能値の評価（引数、代入式の右辺）
     fn evaluate_assignable(&mut self, node: &Node) -> Result<GreenType, String> {
-        let child = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
-        match &child.kind {
+        match &node.kind {
             NodeKind::Compare(_) | NodeKind::Arithmetic(_)
             | NodeKind::Variable { name: _ } | NodeKind::Logical(_) => {
-                self.evaluate_expression(child)
+                self.evaluate_expression(node)
             },
-            NodeKind::Literal(_) => self.evaluate_literal(child),
+            NodeKind::Literal(_) => self.evaluate_literal(node),
             _ => Err(utils::get_error_message("RUNTIME005", &[])?),
         }
     }

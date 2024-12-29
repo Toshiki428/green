@@ -1,6 +1,6 @@
 use std::{iter::Peekable, str::Chars, vec};
 
-use crate::{utils, operator::{Logical, UnaryLogical, BinaryLogical, Arithmetic, UnaryArithmetic, BinaryArithmetic, Comparison}, keyword::BoolValue};
+use crate::{keyword::{BoolValue, Keyword}, operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, utils};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
@@ -11,8 +11,11 @@ pub enum TokenKind {
     ArithmeticOperator(Arithmetic),
     CompareOperator(Comparison),
     LogicalOperator(Logical),
+    Keyword(Keyword),
     LParen,
     RParen,
+    LBrace,
+    RBrace,
     Equal,
     Semicolon,
     EOF,
@@ -51,6 +54,8 @@ impl<'a> Lexer<'a> {
                 ' ' | '\n' | '\r' | '\t' =>  self.next_char(),
                 '(' => {self.push_token(TokenKind::LParen); self.next_char();},
                 ')' => {self.push_token(TokenKind::RParen); self.next_char();},
+                '{' => {self.push_token(TokenKind::LBrace); self.next_char();},
+                '}' => {self.push_token(TokenKind::RBrace); self.next_char();},
                 ';' => {self.push_token(TokenKind::Semicolon); self.next_char();},
                 '+' => {self.push_token(TokenKind::ArithmeticOperator(Arithmetic::Unary(UnaryArithmetic::Plus))); self.next_char();},
                 '-' => {self.push_token(TokenKind::ArithmeticOperator(Arithmetic::Unary(UnaryArithmetic::Minus))); self.next_char();},
@@ -232,6 +237,9 @@ impl<'a> Lexer<'a> {
             "and" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::And)), self.row, self.col),
             "xor" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Xor)), self.row, self.col),
             "not" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Unary(UnaryLogical::Not)), self.row, self.col),
+            "let" => self.push_token_with_location(TokenKind::Keyword(Keyword::Let), self.row, start_col),
+            "if" => self.push_token_with_location(TokenKind::Keyword(Keyword::If), self.row, start_col),
+            "else" => self.push_token_with_location(TokenKind::Keyword(Keyword::Else), self.row, start_col),
             _ => self.push_token_with_location(TokenKind::Identifier(string), self.row, start_col),
         }
 
