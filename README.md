@@ -4,11 +4,11 @@
 ```txt
 <program> ::= <statements>
 <statements> ::= <statement> | <statements> <statement>
-<statement> ::= <function_call> | <variable_declaration> | <if_statement>
+<statement> ::= <function_call> | <variable_declaration> | <if_statement> | <function_definition>
 <if_statement> ::= "if" "(" <assignable> ")" <block> [ "else" <block> ]
+<function_definition> = "function" <function_name> "(" ")" <block>
 <block> ::= "{" <statements> "}"
 <function_call> ::= <function_name> "(" <argument> ")"
-<function_name> ::= "print"
 <argument> ::= <assignable>
 <variable_declaration> ::= "let " <variable> "=" <assignable>
 <assignable> ::= <expression> | <literal>
@@ -24,6 +24,7 @@
 <mul_and_div> ::= <unary> (("*" | "/") <unary>)*
 <unary> ::= <primary> | "-" <primary>
 <primary> ::= <number> | "(" <add_and_sub> ")" | <variable>
+<function_name> ::= [a-zA-Z_][a-zA-Z0-9_]*
 <variable> ::= [a-zA-Z_][a-zA-Z0-9_]*
 <string> ::= "\"" [a-zA-Z0-9 ]* "\""
 <number> ::= [0-9]+

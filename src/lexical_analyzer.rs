@@ -240,6 +240,7 @@ impl<'a> Lexer<'a> {
             "let" => self.push_token_with_location(TokenKind::Keyword(Keyword::Let), self.row, start_col),
             "if" => self.push_token_with_location(TokenKind::Keyword(Keyword::If), self.row, start_col),
             "else" => self.push_token_with_location(TokenKind::Keyword(Keyword::Else), self.row, start_col),
+            "function" => self.push_token_with_location(TokenKind::Keyword(Keyword::Function), self.row, self.col),
             _ => self.push_token_with_location(TokenKind::Identifier(string), self.row, start_col),
         }
 

@@ -58,12 +58,14 @@ impl Environment {
 
 struct Interpreter {
     variables: Environment,
+    functions: HashMap<String, Node>,
 }
 
 impl Interpreter {
     fn new() -> Self {
         Interpreter {
             variables: Environment::new(),
+            functions: HashMap::new(),
         }
     }
 
@@ -82,12 +84,7 @@ impl Interpreter {
 
     fn statement(&mut self, node: &Node) -> Result<(), String> {
         match &node.kind {
-            NodeKind::FunctionCall { name } => {
-                match name.as_str() {
-                    "print" => { self.print_function(node)?; },
-                    _ => { return Err(utils::get_error_message("RUNTIME002", &[("function", name)])?) },
-                }
-            },
+            NodeKind::FunctionCall { name: _ } => self.execute_function(node)?,
             NodeKind::VariableDeclaration { name } => {
                 let expression = self.evaluate_assignable(&node.children[0])?;
                 self.variables.set_variable(name.to_string(), expression);
@@ -97,6 +94,10 @@ impl Interpreter {
                 self.variables.change_variable(name.to_string(), expression)?;
             },
             NodeKind::IfStatement => self.evaluate_if_statement(node)?,
+            NodeKind::FunctionDefinition { name } => {
+                let program = &node.children[0];
+                self.functions.insert(name.to_string(), program.clone());
+            },
             _ => return Err(utils::get_error_message("RUNTIME003", &[])?),
         }
         Ok(())
@@ -117,6 +118,27 @@ impl Interpreter {
             GreenType::String(value) => println!("{}", value),
         }
         Ok(())
+    }
+
+    fn execute_function(&mut self, node: &Node) -> Result<(), String> {
+        match &node.kind {
+            NodeKind::FunctionCall { name } => {
+                match name.as_str() {
+                    "print" => self.print_function(node)?,
+                    _ => {
+                        let function_node = self.functions.get(name).cloned();
+            
+                        if let Some(func) = function_node {
+                            self.execute(&func)?;
+                        } else {
+                            return Err(utils::get_error_message("RUNTIME002", &[("function", name)])?);
+                        }
+                    },
+                }
+                Ok(())
+            }
+            _ => Err("Invalid function node".to_string()),
+        }
     }
 
     fn evaluate_if_statement(&mut self, node: &Node) -> Result<(), String> {

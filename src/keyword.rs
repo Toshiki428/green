@@ -6,6 +6,7 @@ pub enum Keyword {
     For,
     Match,
     Let,
+    Function,
 }
 
 #[derive(Debug, Clone, PartialEq)]
