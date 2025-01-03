@@ -170,52 +170,27 @@ impl Parser {
     fn parse_if_statement(&mut self) -> Result<Node, String> {
         self.tokens.next();
 
-        match self.tokens.next() {
-            Some(token) if token.kind == TokenKind::LParen => {},
-            Some(token) => return Err(utils::get_error_message_with_location("PARSE018", token.row, token.col, &[])?),
-            _ => return Err(utils::get_error_message("PARSE003", &[])?),
-        };
+        self.check_next_token(TokenKind::LParen)?;
 
         let condition = self.parse_expression()?;
 
-        match self.tokens.next() {
-            Some(token) if token.kind == TokenKind::RParen => {},
-            Some(token) => return Err(utils::get_error_message_with_location("PARSE019", token.row, token.col, &[])?),
-            _ => return Err(utils::get_error_message("PARSE003", &[])?),
-        }
-
-        match self.tokens.next() {
-            Some(token) if token.kind == TokenKind::LBrace => {},
-            Some(token) => return Err(utils::get_error_message_with_location("PARSE020", token.row, token.col, &[])?),
-            _ => return Err(utils::get_error_message("PARSE003", &[])?),
-        };
+        self.check_next_token(TokenKind::RParen)?;
+        self.check_next_token(TokenKind::LBrace)?;
 
         let then_block = self.parse_program(Some(TokenKind::RBrace))?;
 
-        match self.tokens.next() {
-            Some(token) if token.kind == TokenKind::RBrace => {},
-            Some(token) => return Err(utils::get_error_message_with_location("PARSE021", token.row, token.col, &[])?),
-            _ => return Err(utils::get_error_message("PARSE003", &[])?),
-        };
+        self.check_next_token(TokenKind::RBrace)?;
 
         let mut children = vec![condition, then_block];
 
         match self.tokens.peek() {
             Some(token) if token.kind == TokenKind::Keyword(Keyword::Else) => {
                 self.tokens.next();
-                match self.tokens.next() {
-                    Some(token) if token.kind == TokenKind::LBrace => {},
-                    Some(token) => return Err(utils::get_error_message_with_location("PARSE020", token.row, token.col, &[])?),
-                    _ => return Err(utils::get_error_message("PARSE003", &[])?),
-                };
+                self.check_next_token(TokenKind::LBrace)?;
         
                 let else_block = self.parse_program(Some(TokenKind::RBrace))?;
         
-                match self.tokens.next() {
-                    Some(token) if token.kind == TokenKind::RBrace => {},
-                    Some(token) => return Err(utils::get_error_message_with_location("PARSE021", token.row, token.col, &[])?),
-                    _ => return Err(utils::get_error_message("PARSE003", &[])?),
-                };
+                self.check_next_token(TokenKind::RBrace)?;
 
                 children.push(else_block);
             },
@@ -241,25 +216,12 @@ impl Parser {
             return Err(get_error_message_with_location("PARSE004", token.row, token.col, &[])?);
         };
 
-        match self.tokens.next() {
-            Some(token) if token.kind == TokenKind::LParen => {},
-            Some(token) => return Err(utils::get_error_message_with_location("PARSE005", token.row, token.col, &[])?),
-            _ => return Err(utils::get_error_message("PARSE003", &[])?),
-        };
+        self.check_next_token(TokenKind::LParen)?;
 
         let argument = self.parse_argument()?;
         
-        match self.tokens.next() {
-            Some(token) if token.kind == TokenKind::RParen => {},
-            Some(token) => return Err(utils::get_error_message_with_location("PARSE006", token.row, token.col, &[])?),
-            _ => return Err(utils::get_error_message("PARSE003", &[])?),
-        }
-
-        match self.tokens.next(){
-            Some(token) if token.kind == TokenKind::Semicolon => {},
-            Some(token) => return Err(utils::get_error_message_with_location("PARSE007", token.row, token.col, &[])?),
-            _ => return Err(utils::get_error_message("PARSE003", &[])?),
-        }
+        self.check_next_token(TokenKind::RParen)?;
+        self.check_next_token(TokenKind::Semicolon)?;
 
         Ok(Node {
             kind: NodeKind::FunctionCall { name: function_name },
@@ -277,18 +239,11 @@ impl Parser {
             return Err(utils::get_error_message_with_location("PARSE013", token.row, token.col, &[])?);
         };
         
-        let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
-        if token.kind != TokenKind::Equal {
-            return Err(utils::get_error_message_with_location("PARSE014", token.row, token.col, &[])?);
-        }
+        self.check_next_token(TokenKind::Equal)?;
 
         let expression = self.parse_expression()?;
 
-        match self.tokens.next() {
-            Some(token) if token.kind == TokenKind::Semicolon => {},
-            Some(token) => return Err(utils::get_error_message_with_location("PARSE015", token.row, token.col, &[])?),
-            _ => return Err(utils::get_error_message("PARSE003", &[])?),
-        }
+        self.check_next_token(TokenKind::Semicolon)?;
 
         Ok(Node {
             kind: NodeKind::VariableDeclaration { name },
@@ -305,18 +260,11 @@ impl Parser {
             return Err(utils::get_error_message_with_location("PARSE013", token.row, token.col, &[])?);
         };
 
-        let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
-        if token.kind != TokenKind::Equal {
-            return Err(utils::get_error_message_with_location("PARSE014", token.row, token.col, &[])?);
-        }
+        self.check_next_token(TokenKind::Equal)?;
 
         let expression = self.parse_expression()?;
 
-        match self.tokens.next() {
-            Some(token) if token.kind == TokenKind::Semicolon => {},
-            Some(token) => return Err(utils::get_error_message_with_location("PARSE015", token.row, token.col, &[])?),
-            _ => return Err(utils::get_error_message("PARSE003", &[])?),
-        }
+        self.check_next_token(TokenKind::Semicolon)?;
 
         Ok(Node {
             kind: NodeKind::VariableAssignment { name },
@@ -561,6 +509,35 @@ impl Parser {
         }
         
         Err(utils::get_error_message_with_location("PARSE010", token.row, token.col, &[])?)
+    }
+
+    fn check_next_token(&mut self, token_kind: TokenKind) -> Result<Token, String> {
+        match self.tokens.next() {
+            Some(token) if token.kind == token_kind => Ok(Token {
+                kind: token.kind,
+                row: token.row,
+                col: token.col,
+            }),
+            Some(token) => {
+                let token_str = match token_kind {
+                    TokenKind::LBrace => "{",
+                    TokenKind::RBrace => "}",
+                    TokenKind::LParen => "(",
+                    TokenKind::RParen => ")",
+                    TokenKind::Semicolon => ";",
+                    TokenKind::Equal => "=",
+                    _ => "文字",
+                };
+
+                Err(utils::get_error_message_with_location(
+                    "PARSE005",
+                    token.row,
+                    token.col,
+                    &[("token", token_str)]
+                )?)
+            },
+            _ => Err(utils::get_error_message("PARSE003", &[])?),
+        }
     }
 }
 
