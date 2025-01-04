@@ -58,18 +58,18 @@ impl Environment {
         Err(utils::get_error_message("RUNTIME007", &[("variable", &name)])?)
     }
 
-    // fn push_scope(&mut self) {
-    //     self.scopes.push(HashMap::new());
-    // }
+    fn push_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+    }
 
-    // fn pop_scope(&mut self) {
-    //     self.scopes.pop();
-    // }
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
+    }
 }
 
 struct Interpreter {
     variables: Environment,
-    functions: HashMap<String, Node>,
+    functions: HashMap<String, (Vec<String>, Node)>,
 }
 
 impl Interpreter {
@@ -105,9 +105,9 @@ impl Interpreter {
                 self.variables.change_variable(name.to_string(), expression)?;
             },
             NodeKind::IfStatement => self.evaluate_if_statement(node)?,
-            NodeKind::FunctionDefinition { name } => {
+            NodeKind::FunctionDefinition { name, parameters } => {
                 let program = &node.children[0];
-                self.functions.insert(name.to_string(), program.clone());
+                self.functions.insert(name.to_string(), (parameters.clone(), program.clone()));
             },
             _ => return Err(utils::get_error_message("RUNTIME003", &[])?),
         }
@@ -133,13 +133,32 @@ impl Interpreter {
                 match name.as_str() {
                     "print" => self.print_function(node)?,
                     _ => {
-                        let function_node = self.functions.get(name).cloned();
-            
-                        if let Some(func) = function_node {
-                            self.execute(&func)?;
+                        let function_data = self.functions.get(name).cloned();
+                        if let Some((parameters, function_node)) = function_data {
+                            let argument = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
+                            if argument.kind != NodeKind::Argument {
+                                return Err(utils::get_error_message("RUNTIME005", &[])?);
+                            }
+                            if parameters.len() != argument.children.len() {
+                                return Err(format!(
+                                    "関数 {} の引数の数が一致しません (期待: {}, 受け取った: {})", 
+                                    name, parameters.len(), argument.children.len()
+                                ));
+                            }
+
+                            self.variables.push_scope();
+
+                            let values = self.evaluate_argument(argument)?;
+                            for (param, arg) in parameters.iter().zip(values.iter()) {
+                                self.variables.set_variable(param.clone(), arg.clone());
+                            }
+
+                            self.execute(&function_node)?;
                         } else {
                             return Err(utils::get_error_message("RUNTIME002", &[("function", name)])?);
                         }
+
+                        self.variables.pop_scope();
                     },
                 }
                 Ok(())

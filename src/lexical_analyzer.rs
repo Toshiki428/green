@@ -258,7 +258,7 @@ impl<'a> Lexer<'a> {
             if c.is_numeric() || c == '.' {
                 number_string.push(c);
                 self.next_char();
-            } else if vec![' ', ')', ';', '+', '-', '*', '/', '=', '!', '\r', '\n'].contains(&c) {
+            } else if vec![' ', ')', ';', ',', '+', '-', '*', '/', '=', '!', '\r', '\n'].contains(&c) {
                 break;
             } else {
                 number_string.push(c);

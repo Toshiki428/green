@@ -88,11 +88,11 @@ if (10 > 3) {
     print("NG");
 }
 
-function test() {
-    print("aaa");
+function test(a, b) {
+    print(a, b);
 }
-
-test();
+let first = 10;
+test(1, 3);
 
 print("bbb");
-test();
+test(first, "b");

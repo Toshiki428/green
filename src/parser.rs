@@ -22,7 +22,7 @@ pub enum NodeKind {
     Arithmetic(Arithmetic),
     Literal(LiteralValue),
     IfStatement,
-    FunctionDefinition { name: String },
+    FunctionDefinition { name: String, parameters: Vec<String> },
 }
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -112,7 +112,15 @@ impl Node {
 
                 return;
             },
-            NodeKind::FunctionDefinition { name} => println!("FunctionDefinition: {}", name),
+            NodeKind::FunctionDefinition { name, parameters } => {
+                println!("FunctionDefinition: {}", name);
+                for parameter in parameters {
+                    for _ in 0..(depth + 1) {
+                        print!("  ");
+                    }
+                    println!("parameter: {}", parameter);
+                }
+            },
         }
         for child in &self.children {
             child.print(depth + 1);
@@ -214,6 +222,28 @@ impl Parser {
             )?),
         };
         self.check_next_token(TokenKind::LParen)?;
+
+        let mut parameters = Vec::new();
+        loop {
+            let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
+            if token.kind == TokenKind::RParen { break; }
+
+            let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
+            let name = if let TokenKind::Identifier(name) = token.kind {
+                name
+            } else {
+                return Err(utils::get_error_message_with_location("PARSE007", token.row, token.col, &[])?);
+            };
+            parameters.push(name);
+
+            let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
+            match token.kind {
+                TokenKind::Comma => { self.tokens.next(); },
+                TokenKind::RParen => break,
+                _ => return Err(utils::get_error_message_with_location("PARSE007", token.row, token.col, &[])?),
+            }
+        }
+
         self.check_next_token(TokenKind::RParen)?;
         self.check_next_token(TokenKind::LBrace)?;
         
@@ -221,7 +251,7 @@ impl Parser {
         self.check_next_token(TokenKind::RBrace)?;
 
         Ok(Node {
-            kind: NodeKind::FunctionDefinition{ name: function_name },
+            kind: NodeKind::FunctionDefinition{ name: function_name, parameters },
             children: vec![block],
         })
 
