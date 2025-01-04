@@ -95,7 +95,7 @@ impl Interpreter {
 
     fn statement(&mut self, node: &Node) -> Result<(), String> {
         match &node.kind {
-            NodeKind::FunctionCall { name: _ } => self.execute_function(node)?,
+            NodeKind::FunctionCall { name: _, arguments: _ } => self.execute_function(node)?,
             NodeKind::VariableDeclaration { name } => {
                 let expression = self.evaluate_assignable(&node.children[0])?;
                 self.variables.set_variable(name.to_string(), expression);
@@ -115,13 +115,8 @@ impl Interpreter {
     }
 
     /// print関数の実行
-    fn print_function(&mut self, node: &Node) -> Result<(), String> {
-        let argument = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
-        if argument.kind != NodeKind::Argument {
-            return Err(utils::get_error_message("RUNTIME005", &[])?);
-        }
-
-        let values = self.evaluate_argument(argument)?;
+    fn print_function(&mut self, arguments: &Vec<Node>) -> Result<(), String> {
+        let values = self.evaluate_argument(arguments)?;
         let result = values.iter().map(ToString::to_string).collect::<Vec<_>>().join(" ");
         println!("{}", result);
         Ok(())
@@ -129,28 +124,24 @@ impl Interpreter {
 
     fn execute_function(&mut self, node: &Node) -> Result<(), String> {
         match &node.kind {
-            NodeKind::FunctionCall { name } => {
+            NodeKind::FunctionCall { name, arguments } => {
                 match name.as_str() {
-                    "print" => self.print_function(node)?,
+                    "print" => self.print_function(arguments)?,
                     _ => {
                         let function_data = self.functions.get(name).cloned();
                         if let Some((parameters, function_node)) = function_data {
-                            let argument = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
-                            if argument.kind != NodeKind::Argument {
-                                return Err(utils::get_error_message("RUNTIME005", &[])?);
-                            }
-                            if parameters.len() != argument.children.len() {
+                            if parameters.len() != arguments.len() {
                                 return Err(format!(
                                     "関数 {} の引数の数が一致しません (期待: {}, 受け取った: {})", 
-                                    name, parameters.len(), argument.children.len()
+                                    name, parameters.len(), arguments.len()
                                 ));
                             }
 
                             self.variables.push_scope();
 
-                            let values = self.evaluate_argument(argument)?;
-                            for (param, arg) in parameters.iter().zip(values.iter()) {
-                                self.variables.set_variable(param.clone(), arg.clone());
+                            let values = self.evaluate_argument(arguments)?;
+                            for (param, value) in parameters.iter().zip(values.iter()) {
+                                self.variables.set_variable(param.clone(), value.clone());
                             }
 
                             self.execute(&function_node)?;
@@ -184,12 +175,12 @@ impl Interpreter {
     }
 
     /// 引数の評価
-    fn evaluate_argument(&mut self, node: &Node) -> Result<Vec<GreenType>, String> {
-        let mut arguments = Vec::new();
-        for child in &node.children {
-            arguments.push(self.evaluate_assignable(child)?);
+    fn evaluate_argument(&mut self, arguments: &Vec<Node>) -> Result<Vec<GreenType>, String> {
+        let mut values = Vec::new();
+        for child in arguments {
+            values.push(self.evaluate_assignable(child)?);
         }
-        return Ok(arguments)
+        return Ok(values)
     }
 
     /// 割り当て可能値の評価（引数、代入式の右辺）

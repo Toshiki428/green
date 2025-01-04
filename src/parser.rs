@@ -12,10 +12,9 @@ pub enum LiteralValue {
 #[derive(Debug, PartialEq, Clone)]
 pub enum NodeKind {
     Program,
-    FunctionCall { name: String },
+    FunctionCall { name: String, arguments: Vec<Node> },
     VariableDeclaration { name: String },
     VariableAssignment { name: String },
-    Argument,
     Variable { name: String },
     Logical(Logical),
     Compare(Comparison),
@@ -24,7 +23,7 @@ pub enum NodeKind {
     IfStatement,
     FunctionDefinition { name: String, parameters: Vec<String> },
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Node {
     pub kind: NodeKind,
     pub children: Vec<Node>,
@@ -38,8 +37,13 @@ impl Node {
         }
         match &self.kind {
             NodeKind::Program => println!("Program"),
-            NodeKind::FunctionCall { name } => println!("FunctionCall: {}", name),
-            NodeKind::Argument => println!("Argument:"),
+            NodeKind::FunctionCall { name , arguments } => {
+                println!("FunctionCall: {}", name);
+                for _ in 0..depth+1 {
+                    print!("  ");
+                }
+                println!("Arguments: {:?}", arguments);
+            },
             NodeKind::VariableDeclaration { name } => println!("VariableDeclaration: {}", name),
             NodeKind::VariableAssignment { name } => println!("VariableAssignment: {}", name),
             NodeKind::Variable { name } => println!("Variable: {}", name),
@@ -276,8 +280,11 @@ impl Parser {
                 self.check_next_token(TokenKind::Semicolon)?;
         
                 Ok(Node {
-                    kind: NodeKind::FunctionCall { name: identifier },
-                    children: vec![arguments],
+                    kind: NodeKind::FunctionCall {
+                        name: identifier,
+                        arguments,
+                    },
+                    children: vec![],
                 })
             },
             TokenKind::Equal => {
@@ -317,7 +324,7 @@ impl Parser {
     }
 
     /// 引数の構文解析
-    fn parse_argument(&mut self) -> Result<Node, String> {
+    fn parse_argument(&mut self) -> Result<Vec<Node>, String> {
         let mut arguments = Vec::new();
         loop {
             let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
@@ -331,10 +338,7 @@ impl Parser {
                 _ => return Err(utils::get_error_message_with_location("PARSE007", token.row, token.col, &[])?),
             }
         }
-        Ok(Node {
-            kind: NodeKind::Argument,
-            children: arguments,
-        })
+        Ok(arguments)
     }
 
     /// 割り当て可能値の構文解析（引数、代入式の右辺）
