@@ -1,6 +1,6 @@
-print("abc");
+print("abc", "ABC");
 // abc
-print("def");
+print("def", 1+3);
 // print("ghi");
 
 /* aaa*

@@ -240,18 +240,14 @@ impl Parser {
         let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         match token.kind {
             TokenKind::LParen => {
-                let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
-                let mut argument = Vec::new();
-                if token.kind != TokenKind::RParen {
-                    argument.push(self.parse_argument()?);
-                }
+                let arguments = self.parse_argument()?;
         
                 self.check_next_token(TokenKind::RParen)?;
                 self.check_next_token(TokenKind::Semicolon)?;
         
                 Ok(Node {
                     kind: NodeKind::FunctionCall { name: identifier },
-                    children: argument,
+                    children: vec![arguments],
                 })
             },
             TokenKind::Equal => {
@@ -292,10 +288,22 @@ impl Parser {
 
     /// 引数の構文解析
     fn parse_argument(&mut self) -> Result<Node, String> {
-        let assignable = self.parse_assignable()?;
+        let mut arguments = Vec::new();
+        loop {
+            let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
+            if token.kind == TokenKind::RParen { break; }
+            arguments.push(self.parse_assignable()?);
+
+            let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
+            match token.kind {
+                TokenKind::Comma => { self.tokens.next(); },
+                TokenKind::RParen => break,
+                _ => return Err(utils::get_error_message_with_location("PARSE007", token.row, token.col, &[])?),
+            }
+        }
         Ok(Node {
             kind: NodeKind::Argument,
-            children: vec![assignable],
+            children: arguments,
         })
     }
 

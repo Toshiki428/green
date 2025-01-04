@@ -10,6 +10,17 @@ enum GreenType {
     String(String),
 }
 
+impl ToString for GreenType {
+    fn to_string(&self) -> String {
+        match self {
+            // GreenType::Int(i) => i.to_string(),
+            GreenType::Float(f) => f.to_string(),
+            GreenType::String(s) => s.clone(),
+            GreenType::Bool(b) => b.to_string(),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Environment {
     scopes: Vec<HashMap<String, GreenType>>,
@@ -110,13 +121,9 @@ impl Interpreter {
             return Err(utils::get_error_message("RUNTIME005", &[])?);
         }
 
-        let value = self.evaluate_argument(argument)?;
-        match value {
-            GreenType::Float(value) => println!("{}", value),
-            // GreenType::Int(value) => println!("{}", value),
-            GreenType::Bool(value) => println!("{}", value),
-            GreenType::String(value) => println!("{}", value),
-        }
+        let values = self.evaluate_argument(argument)?;
+        let result = values.iter().map(ToString::to_string).collect::<Vec<_>>().join(" ");
+        println!("{}", result);
         Ok(())
     }
 
@@ -158,8 +165,12 @@ impl Interpreter {
     }
 
     /// 引数の評価
-    fn evaluate_argument(&mut self, node: &Node) -> Result<GreenType, String> {
-        return self.evaluate_assignable(&node.children[0])
+    fn evaluate_argument(&mut self, node: &Node) -> Result<Vec<GreenType>, String> {
+        let mut arguments = Vec::new();
+        for child in &node.children {
+            arguments.push(self.evaluate_assignable(child)?);
+        }
+        return Ok(arguments)
     }
 
     /// 割り当て可能値の評価（引数、代入式の右辺）
