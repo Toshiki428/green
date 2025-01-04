@@ -28,5 +28,6 @@
     "RUNTIME006": "文字列に許可されていない比較演算子: {operator}",
     "RUNTIME007": "定義されていない変数: {variable}",
     "RUNTIME008": "想定外の比較演算子: {operator}",
+    "RUNTIME009": "右側のオペランドが存在しない",
     "ALL": "不明なエラー"
 }

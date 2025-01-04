@@ -48,7 +48,6 @@ fn main() {
             return;
         }
     };
-    ast.print(0);
 
     if config.option == cli_arg_parse::RunMode::Execute {
         if let Err(e) = interpreter::execute(&ast) {

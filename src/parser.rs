@@ -16,10 +16,25 @@ pub enum NodeKind {
     VariableDeclaration { name: String },
     VariableAssignment { name: String },
     Variable { name: String },
-    Logical(Logical),
-    Compare(Comparison),
-    Arithmetic(Arithmetic),
-    Literal(LiteralValue),
+    /// 論理演算
+    Logical {
+        operator: Logical,
+        left: Box<Node>,
+        right: Option<Box<Node>>,
+    },
+    /// 比較演算
+    Compare {
+        operator: Comparison,
+        left: Box<Node>,
+        right: Box<Node>,
+    },
+    /// 算術演算
+    Arithmetic {
+        operator: Arithmetic,
+        left: Box<Node>,
+        right: Option<Box<Node>>,
+    },
+    Literal { value: LiteralValue },
     IfStatement,
     FunctionDefinition { name: String, parameters: Vec<String> },
 }
@@ -31,104 +46,7 @@ pub struct Node {
 
 impl Node {
     /// デバッグ用のprint文
-    pub fn print(&self, depth: usize) {
-        for _ in 0..depth {
-            print!("  ");
-        }
-        match &self.kind {
-            NodeKind::Program => println!("Program"),
-            NodeKind::FunctionCall { name , arguments } => {
-                println!("FunctionCall: {}", name);
-                for _ in 0..depth+1 {
-                    print!("  ");
-                }
-                println!("Arguments: {:?}", arguments);
-            },
-            NodeKind::VariableDeclaration { name } => println!("VariableDeclaration: {}", name),
-            NodeKind::VariableAssignment { name } => println!("VariableAssignment: {}", name),
-            NodeKind::Variable { name } => println!("Variable: {}", name),
-            NodeKind::Logical(operator) => {
-                match operator {
-                    Logical::Binary(BinaryLogical::Or) => println!("Logical: or"),
-                    Logical::Binary(BinaryLogical::And) => println!("Logial: and"),
-                    Logical::Binary(BinaryLogical::Xor) => println!("Logical: xor"),
-                    Logical::Unary(UnaryLogical::Not) => println!("Logical: not"),
-                }
-            },
-            NodeKind::Compare(operator) => {
-                let op_str = match operator {
-                    Comparison::Equal => "==",
-                    Comparison::NotEqual => "!=",
-                    Comparison::Greater => ">",
-                    Comparison::GreaterEqual => ">=",
-                    Comparison::Less => "<",
-                    Comparison::LessEqual => "<=",
-                };
-                println!("Compare: {}", op_str)
-            },
-            NodeKind::Arithmetic(operator) => {
-                match operator {
-                    Arithmetic::Binary(bin_op) => {
-                        let op_chr = match bin_op {
-                            BinaryArithmetic::Add => '+',
-                            BinaryArithmetic::Subtract => '-',
-                            BinaryArithmetic::Multiply => '*',
-                            BinaryArithmetic::Divide => '/',
-                        };
-                        println!("BinaryArithmetic: {}", op_chr);
-                    },
-                    Arithmetic::Unary(_) => println!("UnaryArithmetic: -"),
-                }
-            },
-            NodeKind::Literal ( literal ) => {
-                match literal {
-                    LiteralValue::Int(value) => println!("Int: {}", value),
-                    LiteralValue::Float(value) => println!("Float: {}", value),
-                    LiteralValue::String(value) => println!("String: {}", value),
-                    LiteralValue::Bool(value) => println!("Bool: {}", value),
-                }
-            },
-            NodeKind::IfStatement => {
-                println!("IfStatement:");
-                if let Some(condition) = self.children.get(0) {
-                    for _ in 0..(depth + 1) {
-                        print!("  ");
-                    }
-                    println!("Condition:");
-                    condition.print(depth + 2); // 再帰的にツリーを表示
-                }
-
-                if let Some(then_block) = self.children.get(1) {
-                    for _ in 0..(depth + 1) {
-                        print!("  ");
-                    }
-                    println!("Then Block:");
-                    then_block.print(depth + 2);
-                }
-
-                if let Some(else_block) = self.children.get(2) {
-                    for _ in 0..(depth + 1) {
-                        print!("  ");
-                    }
-                    println!("Else Block:");
-                    else_block.print(depth + 2);
-                }
-
-                return;
-            },
-            NodeKind::FunctionDefinition { name, parameters } => {
-                println!("FunctionDefinition: {}", name);
-                for parameter in parameters {
-                    for _ in 0..(depth + 1) {
-                        print!("  ");
-                    }
-                    println!("parameter: {}", parameter);
-                }
-            },
-        }
-        for child in &self.children {
-            child.print(depth + 1);
-        }
+    pub fn print(&self) {
     }
 }
 
@@ -370,8 +288,12 @@ impl Parser {
             self.tokens.next();
             let right = self.parse_and_expr()?;
             left = Node {
-                kind: NodeKind::Logical(Logical::Binary(BinaryLogical::Or)),
-                children: vec![left, right]
+                kind: NodeKind::Logical {
+                    operator: Logical::Binary(BinaryLogical::Or),
+                    left: Box::new(left),
+                    right: Some(Box::new(right)),
+                },
+                children: vec![]
             };
         }
         Ok(left)
@@ -386,8 +308,12 @@ impl Parser {
                 self.tokens.next();
                 let right = self.parse_not_expr()?;
                 left = Node {
-                    kind: NodeKind::Logical(operator),
-                    children: vec![left, right]
+                    kind: NodeKind::Logical {
+                        operator,
+                        left: Box::new(left),
+                        right: Some(Box::new(right)),
+                    },
+                    children: vec![]
                 };
             } else {
                 break;
@@ -403,8 +329,12 @@ impl Parser {
             TokenKind::LogicalOperator(Logical::Unary(UnaryLogical::Not)) => {
                 let value = self.parse_expression()?;
                 Ok(Node {
-                    kind: NodeKind::Logical(Logical::Unary(UnaryLogical::Not)),
-                    children: vec![value],
+                    kind: NodeKind::Logical {
+                        operator: Logical::Unary(UnaryLogical::Not),
+                        left: Box::new(value),
+                        right: None,
+                    },
+                    children: vec![],
                 })
             },
             TokenKind::BoolLiteral(_) => return self.parse_literal(),
@@ -425,8 +355,12 @@ impl Parser {
         self.tokens.next();
         let right = self.parse_value()?;
         return Ok(Node {
-            kind: NodeKind::Compare(operator),
-            children: vec![left?, right]
+            kind: NodeKind::Compare {
+                operator,
+                left: Box::new(left?),
+                right: Box::new(right),
+            },
+            children: vec![]
         });
     }
 
@@ -454,8 +388,12 @@ impl Parser {
             self.tokens.next();
             let right = self.parse_mul_and_div()?;
             left = Node {
-                kind: NodeKind::Arithmetic(Arithmetic::Binary(operator)),
-                children: vec![left, right]
+                kind: NodeKind::Arithmetic {
+                    operator: Arithmetic::Binary(operator),
+                    left: Box::new(left),
+                    right: Some(Box::new(right))
+                },
+                children: vec![]
             };
         }
         Ok(left)
@@ -469,8 +407,12 @@ impl Parser {
             self.tokens.next();
             let right = self.parse_unary()?;
             left = Node {
-                kind: NodeKind::Arithmetic(Arithmetic::Binary(operator)),
-                children: vec![left, right]
+                kind: NodeKind::Arithmetic {
+                    operator: Arithmetic::Binary(operator),
+                    left: Box::new(left),
+                    right: Some(Box::new(right)),
+                },
+                children: vec![]
             };
         }
         Ok(left)
@@ -488,8 +430,12 @@ impl Parser {
                 self.tokens.next();
                 let number = self.parse_primary()?;
                 Ok(Node {
-                    kind: NodeKind::Arithmetic(Arithmetic::Unary(UnaryArithmetic::Minus)),
-                    children: vec![number],
+                    kind: NodeKind::Arithmetic {
+                        operator: Arithmetic::Unary(UnaryArithmetic::Minus),
+                        left: Box::new(number),
+                        right: None,
+                    },
+                    children: vec![],
                 })
             },
             _ => { Err(utils::get_error_message_with_location("PARSE002", token.row, token.col, &[])?) },
@@ -536,14 +482,14 @@ impl Parser {
         match token.kind {
             TokenKind::StringLiteral(value) => {
                 return Ok(Node {
-                    kind: NodeKind::Literal(LiteralValue::String(value)), 
+                    kind: NodeKind::Literal { value: LiteralValue::String(value) }, 
                     children: vec![]
                 });
             },
             TokenKind::NumberLiteral(value) => {
                 if let Ok(number) = value.parse::<f64>() {
                     return Ok(Node {
-                        kind: NodeKind::Literal(LiteralValue::Float(number)),
+                        kind: NodeKind::Literal { value: LiteralValue::Float(number) },
                         children: vec![],
                     });
                 }
@@ -552,13 +498,13 @@ impl Parser {
                 match value {
                     BoolValue::True => {
                         return Ok(Node {
-                            kind: NodeKind::Literal(LiteralValue::Bool(true)),
+                            kind: NodeKind::Literal { value: LiteralValue::Bool(true) },
                             children: vec![],
                         });
                     },
                     BoolValue::False => {
                         return Ok(Node {
-                            kind: NodeKind::Literal(LiteralValue::Bool(false)),
+                            kind: NodeKind::Literal { value: LiteralValue::Bool(false) },
                             children: vec![],
                         });
                     },

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Logical, UnaryArithmetic, UnaryLogical, Comparison}, parser::{LiteralValue, Node, NodeKind}, utils};
+use crate::{operator::{ Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, parser::{LiteralValue, Node, NodeKind}, utils};
 
 #[derive(Debug, Clone)]
 enum GreenType {
@@ -186,11 +186,11 @@ impl Interpreter {
     /// 割り当て可能値の評価（引数、代入式の右辺）
     fn evaluate_assignable(&mut self, node: &Node) -> Result<GreenType, String> {
         match &node.kind {
-            NodeKind::Compare(_) | NodeKind::Arithmetic(_)
-            | NodeKind::Variable { name: _ } | NodeKind::Logical(_) => {
+            NodeKind::Compare{ operator: _, left: _, right: _ } | NodeKind::Arithmetic{ operator: _, left: _, right: _ }
+            | NodeKind::Variable { name: _ } | NodeKind::Logical{ operator: _, left: _, right: _ } => {
                 self.evaluate_expression(node)
             },
-            NodeKind::Literal(_) => self.evaluate_literal(node),
+            NodeKind::Literal{ value: _ } => self.evaluate_literal(node),
             _ => Err(utils::get_error_message("RUNTIME005", &[])?),
         }
     }
@@ -198,41 +198,46 @@ impl Interpreter {
     /// 式の評価
     fn evaluate_expression(&mut self, node: &Node) -> Result<GreenType, String> {
         match &node.kind {
-            NodeKind::Logical(logical) => {
-                match logical {
-                    Logical::Unary(operator) => {
-                        let node = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
+            NodeKind::Logical {
+                operator,
+                left,
+                right,
+            } => {
+                match operator {
+                    Logical::Unary(unary_operator) => {
+                        let node = left;
                         if let GreenType::Bool(value)  = self.evaluate_expression(node)? {
-                            let result = self.unary_logical_operations(operator, value)?;
+                            let result = self.unary_logical_operations(unary_operator, value)?;
                             Ok(GreenType::Bool(result))
                         } else {
-                            Err(format!("想定外の論理演算: 演算子: {:?} 値: {:?}", operator, node))
+                            Err(format!("想定外の論理演算: 演算子: {:?} 値: {:?}", unary_operator, node))
                         }
                     },
-                    Logical::Binary(operator) => {
-                        let left_node = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
-                        let left = self.evaluate_expression(left_node)?;
-                        let right_node = node.children.get(1).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
-                        let right = self.evaluate_expression(right_node)?;
+                    Logical::Binary(binary_operator) => {
+                        let left = self.evaluate_expression(left)?;
+                        let right = match right {
+                            Some(right) => self.evaluate_expression(&right)?,
+                            None => return Err(utils::get_error_message("RUNTIME009", &[])?),
+                        };
                         match (left, right) {
                             (GreenType::Bool(left_value), GreenType::Bool(right_value)) => {
-                                let result = self.binary_logical_operations(operator, left_value, right_value)?;
+                                let result = self.binary_logical_operations(binary_operator, left_value, right_value)?;
                                 Ok(GreenType::Bool(result))
                             },
                             (left_value, right_value) => {
-                                Err(format!("想定外の論理演算: 左: {:?} 演算子: {:?} 右: {:?}", left_value, operator, right_value))
+                                Err(format!("想定外の論理演算: 左: {:?} 演算子: {:?} 右: {:?}", left_value, binary_operator, right_value))
                             },
                         }
                     },
                 }
             },
-            NodeKind::Compare(operator) => {
-                let left_node = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
-                let left = self.evaluate_expression(left_node)?;
-                
-                let right_node = node.children.get(1).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
-                let right = self.evaluate_expression(right_node)?;
-
+            NodeKind::Compare {
+                operator,
+                left,
+                right
+            } => {
+                let left = self.evaluate_expression(left)?;
+                let right = self.evaluate_expression(right)?;
                 match (left, right) {
                     (GreenType::Float(left_value), GreenType::Float(right_value)) => {
                         let result = self.compare_values(operator, left_value, right_value)?;
@@ -251,17 +256,23 @@ impl Interpreter {
                 }
             },
             // 四則演算
-            NodeKind::Arithmetic(Arithmetic::Binary(operator)) => {
-                let left = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
+            NodeKind::Arithmetic {
+                operator: Arithmetic::Binary(binary_operator),
+                left,
+                right
+            } => {
                 match self.evaluate_expression(left)? {
                     GreenType::Float(left_value) => {
-                        let right = node.children.get(1).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
+                        let right = match right {
+                            Some(right) => right,
+                            None => return Err(utils::get_error_message("RUNTIME009", &[])?),
+                        };
                         let right_value = if let GreenType::Float(right_value) = self.evaluate_expression(right)?{
                             right_value
                         } else {
                             return Err(format!("無効な演算: {:?}", node));
                         };
-                        match operator {
+                        match binary_operator {
                             BinaryArithmetic::Add => Ok(GreenType::Float(left_value + right_value)),
                             BinaryArithmetic::Subtract => Ok(GreenType::Float(left_value - right_value)),
                             BinaryArithmetic::Multiply => Ok(GreenType::Float(left_value * right_value)),
@@ -271,23 +282,26 @@ impl Interpreter {
                     _ => Err(format!("想定外のAddAndSub型: {:?}", node))
                 }
             },
-            NodeKind::Arithmetic(Arithmetic::Unary(operator)) => {
-                let number = node.children.get(0).ok_or(utils::get_error_message("RUNTIME004", &[])?)?;
-                if let GreenType::Float(value) = self.evaluate_expression(number)?{
+            NodeKind::Arithmetic {
+                operator: Arithmetic::Unary(unary_operator),
+                left,
+                right: _,
+            } => {
+                if let GreenType::Float(value) = self.evaluate_expression(left)?{
                     let mut result = value;
-                    if *operator == UnaryArithmetic::Minus {
+                    if *unary_operator == UnaryArithmetic::Minus {
                         result = -1.0 * value;
                     }
                     Ok(GreenType::Float(result))
                 } else {
-                    Err(format!("想定外のPrimary型: {:?}", number))
+                    Err(format!("想定外のPrimary型: {:?}", left))
                 }
             },
             NodeKind::Variable { name } => {
                 let variable = self.variables.get_variable(name)?;
                 Ok(variable)
             },
-            NodeKind::Literal(_) => self.evaluate_literal(node),
+            NodeKind::Literal { value: _ } => self.evaluate_literal(node),
             _ => Err(utils::get_error_message("RUNTIME003", &[])?),
         }
     }
@@ -323,9 +337,9 @@ impl Interpreter {
     /// 値の評価
     fn evaluate_literal(&mut self, node: &Node) -> Result<GreenType, String> {
         match &node.kind {
-            NodeKind::Literal(LiteralValue::String(value)) => Ok(GreenType::String(value.to_string())),
-            NodeKind::Literal(LiteralValue::Float(value)) => Ok(GreenType::Float(*value)),
-            NodeKind::Literal(LiteralValue::Bool(value)) => Ok(GreenType::Bool(*value)),
+            NodeKind::Literal { value: LiteralValue::String(string) } => Ok(GreenType::String(string.to_string())),
+            NodeKind::Literal { value: LiteralValue::Float(float) } => Ok(GreenType::Float(*float)),
+            NodeKind::Literal { value: LiteralValue::Bool(bool ) } => Ok(GreenType::Bool(*bool)),
             _ => { Err(format!("想定外のリテラルの型: {:?}", node)) }
         }
     }
