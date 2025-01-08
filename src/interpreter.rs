@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{operator::{ Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, parser::{LiteralValue, Node, NodeKind}, utils};
+use crate::{operator::{ Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, parser::{LiteralValue, Node}, utils};
 
 #[derive(Debug, Clone)]
 enum GreenType {
@@ -8,6 +8,7 @@ enum GreenType {
     // Int(i32),
     Bool(bool),
     String(String),
+    Null,
 }
 
 impl ToString for GreenType {
@@ -17,6 +18,7 @@ impl ToString for GreenType {
             GreenType::Float(f) => f.to_string(),
             GreenType::String(s) => s.clone(),
             GreenType::Bool(b) => b.to_string(),
+            GreenType::Null => "Null".to_string(),
         }
     }
 }
@@ -69,7 +71,7 @@ impl Environment {
 
 struct Interpreter {
     variables: Environment,
-    functions: HashMap<String, (Vec<String>, Node)>,
+    functions: HashMap<String, (Vec<String>, Box<Node>)>,
 }
 
 impl Interpreter {
@@ -82,9 +84,9 @@ impl Interpreter {
 
     /// プログラムの実行
     fn execute(&mut self, node: &Node) -> Result<(), String> {
-        match &node.kind {
-            NodeKind::Program => {
-                for child in &node.children {
+        match &node {
+            Node::Program { statements } => {
+                for child in statements {
                     self.statement(child)?;
                 }
             },
@@ -94,20 +96,20 @@ impl Interpreter {
     }
 
     fn statement(&mut self, node: &Node) -> Result<(), String> {
-        match &node.kind {
-            NodeKind::FunctionCall { name: _, arguments: _ } => self.execute_function(node)?,
-            NodeKind::VariableDeclaration { name } => {
-                let expression = self.evaluate_assignable(&node.children[0])?;
-                self.variables.set_variable(name.to_string(), expression);
+        match &node {
+            Node::FunctionCall { name: _, arguments: _ } => self.execute_function(node)?,
+            Node::VariableDeclaration { name } => {
+                self.variables.set_variable(name.to_string(), GreenType::Null);
             },
-            NodeKind::VariableAssignment { name } => {
-                let expression = self.evaluate_assignable(&node.children[0])?;
-                self.variables.change_variable(name.to_string(), expression)?;
+            Node::VariableAssignment { name, expression } => {
+                let value = self.evaluate_assignable(expression)?;
+                self.variables.change_variable(name.to_string(), value)?;
             },
-            NodeKind::IfStatement => self.evaluate_if_statement(node)?,
-            NodeKind::FunctionDefinition { name, parameters } => {
-                let program = &node.children[0];
-                self.functions.insert(name.to_string(), (parameters.clone(), program.clone()));
+            Node::IfStatement { condition_node, then_block, else_block } => {
+                self.evaluate_if_statement(condition_node, then_block, else_block)?
+            },
+            Node::FunctionDefinition { name, parameters, block } => {
+                self.functions.insert(name.to_string(), (parameters.clone(), block.clone()));
             },
             _ => return Err(utils::get_error_message("RUNTIME003", &[])?),
         }
@@ -123,8 +125,8 @@ impl Interpreter {
     }
 
     fn execute_function(&mut self, node: &Node) -> Result<(), String> {
-        match &node.kind {
-            NodeKind::FunctionCall { name, arguments } => {
+        match &node {
+            Node::FunctionCall { name, arguments } => {
                 match name.as_str() {
                     "print" => self.print_function(arguments)?,
                     _ => {
@@ -158,15 +160,14 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_if_statement(&mut self, node: &Node) -> Result<(), String> {
-        let condition_node = &node.children[0];
+    fn evaluate_if_statement(&mut self, condition_node: &Node, then_block: &Node, else_block: &Option<Box<Node>>) -> Result<(), String> {
         if let GreenType::Bool(condition_result) = self.evaluate_assignable(&condition_node)? {
             if condition_result {
-                let then_block = &node.children[1];
                 self.execute(then_block)?;
             } else {
-                let else_block = &node.children[2];
-                self.execute(else_block)?;
+                if let Some(else_node) = else_block {
+                    self.execute(else_node)?;
+                }
             }
         } else {
             return Err(format!("if文の条件が正しくない"))
@@ -185,20 +186,20 @@ impl Interpreter {
 
     /// 割り当て可能値の評価（引数、代入式の右辺）
     fn evaluate_assignable(&mut self, node: &Node) -> Result<GreenType, String> {
-        match &node.kind {
-            NodeKind::Compare{ operator: _, left: _, right: _ } | NodeKind::Arithmetic{ operator: _, left: _, right: _ }
-            | NodeKind::Variable { name: _ } | NodeKind::Logical{ operator: _, left: _, right: _ } => {
+        match &node {
+            Node::Compare{ operator: _, left: _, right: _ } | Node::Arithmetic{ operator: _, left: _, right: _ }
+            | Node::Variable { name: _ } | Node::Logical{ operator: _, left: _, right: _ } => {
                 self.evaluate_expression(node)
             },
-            NodeKind::Literal{ value: _ } => self.evaluate_literal(node),
+            Node::Literal{ value: _ } => self.evaluate_literal(node),
             _ => Err(utils::get_error_message("RUNTIME005", &[])?),
         }
     }
 
     /// 式の評価
     fn evaluate_expression(&mut self, node: &Node) -> Result<GreenType, String> {
-        match &node.kind {
-            NodeKind::Logical {
+        match &node {
+            Node::Logical {
                 operator,
                 left,
                 right,
@@ -231,7 +232,7 @@ impl Interpreter {
                     },
                 }
             },
-            NodeKind::Compare {
+            Node::Compare {
                 operator,
                 left,
                 right
@@ -256,7 +257,7 @@ impl Interpreter {
                 }
             },
             // 四則演算
-            NodeKind::Arithmetic {
+            Node::Arithmetic {
                 operator: Arithmetic::Binary(binary_operator),
                 left,
                 right
@@ -282,7 +283,7 @@ impl Interpreter {
                     _ => Err(format!("想定外のAddAndSub型: {:?}", node))
                 }
             },
-            NodeKind::Arithmetic {
+            Node::Arithmetic {
                 operator: Arithmetic::Unary(unary_operator),
                 left,
                 right: _,
@@ -297,11 +298,11 @@ impl Interpreter {
                     Err(format!("想定外のPrimary型: {:?}", left))
                 }
             },
-            NodeKind::Variable { name } => {
+            Node::Variable { name } => {
                 let variable = self.variables.get_variable(name)?;
                 Ok(variable)
             },
-            NodeKind::Literal { value: _ } => self.evaluate_literal(node),
+            Node::Literal { value: _ } => self.evaluate_literal(node),
             _ => Err(utils::get_error_message("RUNTIME003", &[])?),
         }
     }
@@ -336,10 +337,10 @@ impl Interpreter {
 
     /// 値の評価
     fn evaluate_literal(&mut self, node: &Node) -> Result<GreenType, String> {
-        match &node.kind {
-            NodeKind::Literal { value: LiteralValue::String(string) } => Ok(GreenType::String(string.to_string())),
-            NodeKind::Literal { value: LiteralValue::Float(float) } => Ok(GreenType::Float(*float)),
-            NodeKind::Literal { value: LiteralValue::Bool(bool ) } => Ok(GreenType::Bool(*bool)),
+        match &node {
+            Node::Literal { value: LiteralValue::String(string) } => Ok(GreenType::String(string.to_string())),
+            Node::Literal { value: LiteralValue::Float(float) } => Ok(GreenType::Float(*float)),
+            Node::Literal { value: LiteralValue::Bool(bool ) } => Ok(GreenType::Bool(*bool)),
             _ => { Err(format!("想定外のリテラルの型: {:?}", node)) }
         }
     }

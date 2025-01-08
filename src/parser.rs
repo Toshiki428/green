@@ -8,14 +8,46 @@ pub enum LiteralValue {
     String(String),
     Bool(bool),
 }
+impl LiteralValue {
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Int(value) => return value.to_string(),
+            Self::Float(value) => return value.to_string(),
+            Self::String(value) => return value.to_string(),
+            Self::Bool(value) => {
+                match value {
+                    true => return "true".to_string(),
+                    false => return "false".to_string(),
+                }
+            },
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum NodeKind {
-    Program,
-    FunctionCall { name: String, arguments: Vec<Node> },
-    VariableDeclaration { name: String },
-    VariableAssignment { name: String },
-    Variable { name: String },
+pub enum Node {
+    /// プログラム全体のノード
+    Program {
+        statements: Vec<Node>,
+    },
+    /// 関数呼び出し
+    FunctionCall { 
+        name: String,
+        arguments: Vec<Node>,
+    },
+    /// 変数宣言
+    VariableDeclaration {
+        name: String,
+    },
+    /// 変数代入
+    VariableAssignment {
+        name: String,
+        expression: Box<Node>,
+    },
+    /// 変数呼び出し
+    Variable {
+        name: String,
+    },
     /// 論理演算
     Logical {
         operator: Logical,
@@ -34,19 +66,116 @@ pub enum NodeKind {
         left: Box<Node>,
         right: Option<Box<Node>>,
     },
-    Literal { value: LiteralValue },
-    IfStatement,
-    FunctionDefinition { name: String, parameters: Vec<String> },
-}
-#[derive(Debug, PartialEq, Clone)]
-pub struct Node {
-    pub kind: NodeKind,
-    pub children: Vec<Node>,
+    /// リテラル値
+    Literal {
+        value: LiteralValue,
+    },
+    /// If文
+    IfStatement {
+        condition_node: Box<Node>,
+        then_block: Box<Node>,
+        else_block: Option<Box<Node>>,
+    },
+    /// 関数定義
+    FunctionDefinition {
+        name: String,
+        parameters: Vec<String>,
+        block: Box<Node>,
+    },
 }
 
 impl Node {
     /// デバッグ用のprint文
-    pub fn print(&self) {
+    pub fn print(&self, depth: i32) {
+        self.indent(depth);
+        match self {
+            Self::Program { statements } => {
+                println!("program:");
+                for statement in statements {
+                    statement.print(depth+1);
+                }
+            },
+            Self::FunctionCall { name, arguments } => {
+                println!("FunctionCall: {}", name);
+                self.indent(depth+1);
+                println!("Args:");
+                for argument in arguments {
+                    argument.print(depth+2);
+                }
+            },
+            Self::VariableDeclaration { name } => {
+                println!("VariableDeaclaration: {}", name);
+            },
+            Self::VariableAssignment { name, expression } => {
+                println!("VariableAssignment: {}", name);
+                expression.print(depth+1);
+            },
+            Self::Variable { name } => {
+                println!("Variable: {}", name);
+            },
+            Self::Logical { operator, left, right } => {
+                println!("operator: {}", operator.as_str());
+                self.indent(depth+1);
+                println!("left:");
+                left.print(depth+2);
+                if let Some(node) = right {
+                    self.indent(depth+1);
+                    println!("right:");
+                    node.print(depth+2);
+                }
+            },
+            Self::Compare { operator, left, right } => {
+                println!("operator: {}", operator.as_str());
+                self.indent(depth+1);
+                println!("left:");
+                left.print(depth+2);
+                self.indent(depth+1);
+                println!("right:");
+                right.print(depth+2);
+            },
+            Self::Arithmetic { operator, left, right } => {
+                println!("operator: {}", operator.as_str());
+                self.indent(depth+1);
+                println!("left:");
+                left.print(depth+2);
+                if let Some(node) = right {
+                    self.indent(depth+1);
+                    println!("right:");
+                    node.print(depth+2);
+                }
+            },
+            Self::Literal { value } => println!("Literal: {}", value.to_string()),
+            Self::IfStatement { condition_node, then_block, else_block } => {
+                println!("IfStatement:");
+                self.indent(depth+1);
+                println!("condition_node");
+                condition_node.print(depth+2);
+                self.indent(depth+1);
+                println!("then_block");
+                then_block.print(depth+2);
+                if let Some(node) = else_block {
+                    self.indent(depth+1);
+                    println!("else_block");
+                    node.print(depth+2);
+                }
+            },
+            Self::FunctionDefinition { name, parameters, block } => {
+                println!("FunctionDefinition: {}", name);
+                for param in parameters {
+                    self.indent(depth+1);
+                    println!("param: {}", param);
+                }
+                self.indent(depth+1);
+                println!("block:");
+                block.print(depth+2);
+            },
+        }
+    }
+
+    fn indent(&self, depth: i32) {
+        for _ in 0..depth {
+            print!("  ");
+        }
     }
 }
 
@@ -77,7 +206,32 @@ impl Parser {
                 },
                 TokenKind::Keyword(keyword) => {
                     match keyword {
-                        Keyword::Let => children.push(self.parse_variable_declaration()?),
+                        Keyword::Let => {
+                            self.tokens.next();
+                            let name_token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
+                            let name = if let TokenKind::Identifier(name) = name_token.kind {
+                                name
+                            } else {
+                                return Err("".to_string());
+                            };
+                            children.push(Node::VariableDeclaration {
+                                name: name.to_string(),
+                            });
+                            let next_token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
+                            if next_token.kind == TokenKind::Semicolon {
+                            } else if next_token.kind == TokenKind::Equal {
+                                let expression = self.parse_expression()?;
+                                self.check_next_token(TokenKind::Semicolon)?;
+                                children.push(Node::VariableAssignment {
+                                    name,
+                                    expression: Box::new(expression),
+                                });
+                            } else {
+                                return Err("定義されていない関数宣言".to_string());
+                            }
+
+                            
+                        },
                         Keyword::If => children.push(self.parse_if_statement()?),
                         Keyword::Function => children.push(self.parse_function_definition()?),
                         _ => {},
@@ -91,9 +245,8 @@ impl Parser {
             }
         }
 
-        Ok(Node { 
-            kind: NodeKind::Program, 
-            children: children 
+        Ok(Node::Program {
+            statements: children
         })
     }
 
@@ -111,9 +264,7 @@ impl Parser {
 
         self.check_next_token(TokenKind::RBrace)?;
 
-        let mut children = vec![condition, then_block];
-
-        match self.tokens.peek() {
+        let else_block = match self.tokens.peek() {
             Some(token) if token.kind == TokenKind::Keyword(Keyword::Else) => {
                 self.tokens.next();
                 self.check_next_token(TokenKind::LBrace)?;
@@ -122,14 +273,15 @@ impl Parser {
         
                 self.check_next_token(TokenKind::RBrace)?;
 
-                children.push(else_block);
+                Some(else_block)
             },
-            _ => {},
-        }
+            _ => None,
+        };
 
-        Ok(Node {
-            kind: NodeKind::IfStatement,
-            children: children,
+        Ok(Node::IfStatement {
+            condition_node: Box::new(condition),
+            then_block: Box::new(then_block),
+            else_block: else_block.map(Box::new),
         })
     }
 
@@ -172,9 +324,10 @@ impl Parser {
         let block = self.parse_program(Some(TokenKind::RBrace))?;
         self.check_next_token(TokenKind::RBrace)?;
 
-        Ok(Node {
-            kind: NodeKind::FunctionDefinition{ name: function_name, parameters },
-            children: vec![block],
+        Ok(Node::FunctionDefinition {
+            name: function_name,
+            parameters,
+            block: Box::new(block),
         })
 
     }
@@ -197,12 +350,9 @@ impl Parser {
                 self.check_next_token(TokenKind::RParen)?;
                 self.check_next_token(TokenKind::Semicolon)?;
         
-                Ok(Node {
-                    kind: NodeKind::FunctionCall {
-                        name: identifier,
-                        arguments,
-                    },
-                    children: vec![],
+                Ok(Node::FunctionCall {
+                    name: identifier,
+                    arguments: arguments,
                 })
             },
             TokenKind::Equal => {
@@ -210,9 +360,9 @@ impl Parser {
         
                 self.check_next_token(TokenKind::Semicolon)?;
         
-                Ok(Node {
-                    kind: NodeKind::VariableAssignment { name: identifier },
-                    children: vec![expression],
+                Ok(Node::VariableAssignment {
+                    name: identifier,
+                    expression: Box::new(expression),
                 })
             },
             _ => Err(utils::get_error_message_with_location("PARSE002", token.row, token.col, &[])?),
@@ -220,26 +370,12 @@ impl Parser {
     }
 
     /// 変数定義の構文解析
-    fn parse_variable_declaration(&mut self) -> Result<Node, String> {
-        self.tokens.next();
-        let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
-        let name = if let TokenKind::Identifier(name) = token.kind {
-            name
-        } else {
-            return Err(utils::get_error_message_with_location("PARSE013", token.row, token.col, &[])?);
-        };
-        
-        self.check_next_token(TokenKind::Equal)?;
-
-        let expression = self.parse_expression()?;
-
-        self.check_next_token(TokenKind::Semicolon)?;
-
-        Ok(Node {
-            kind: NodeKind::VariableDeclaration { name },
-            children: vec![expression],
-        })
-    }
+    // fn parse_variable_declaration(&mut self) -> Result<Node, String> {
+    //     Ok(Node {
+    //         kind: NodeKind::VariableDeclaration { name: name.to_string() },
+    //         children: vec![],
+    //     })
+    // }
 
     /// 引数の構文解析
     fn parse_argument(&mut self) -> Result<Vec<Node>, String> {
@@ -287,13 +423,10 @@ impl Parser {
         while let Some(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Or))) = self.tokens.peek().map(|t| &t.kind) {
             self.tokens.next();
             let right = self.parse_and_expr()?;
-            left = Node {
-                kind: NodeKind::Logical {
-                    operator: Logical::Binary(BinaryLogical::Or),
-                    left: Box::new(left),
-                    right: Some(Box::new(right)),
-                },
-                children: vec![]
+            left = Node::Logical {
+                operator: Logical::Binary(BinaryLogical::Or),
+                left: Box::new(left),
+                right: Some(Box::new(right)),
             };
         }
         Ok(left)
@@ -307,13 +440,10 @@ impl Parser {
             if operator == Logical::Binary(BinaryLogical::And) || operator == Logical::Binary(BinaryLogical::Xor) {
                 self.tokens.next();
                 let right = self.parse_not_expr()?;
-                left = Node {
-                    kind: NodeKind::Logical {
-                        operator,
-                        left: Box::new(left),
-                        right: Some(Box::new(right)),
-                    },
-                    children: vec![]
+                left = Node::Logical {
+                    operator,
+                    left: Box::new(left),
+                    right: Some(Box::new(right)),
                 };
             } else {
                 break;
@@ -328,13 +458,10 @@ impl Parser {
         match token.kind {
             TokenKind::LogicalOperator(Logical::Unary(UnaryLogical::Not)) => {
                 let value = self.parse_expression()?;
-                Ok(Node {
-                    kind: NodeKind::Logical {
-                        operator: Logical::Unary(UnaryLogical::Not),
-                        left: Box::new(value),
-                        right: None,
-                    },
-                    children: vec![],
+                Ok(Node::Logical {
+                    operator: Logical::Unary(UnaryLogical::Not),
+                    left: Box::new(value),
+                    right: None,
                 })
             },
             TokenKind::BoolLiteral(_) => return self.parse_literal(),
@@ -354,13 +481,10 @@ impl Parser {
         
         self.tokens.next();
         let right = self.parse_value()?;
-        return Ok(Node {
-            kind: NodeKind::Compare {
-                operator,
-                left: Box::new(left?),
-                right: Box::new(right),
-            },
-            children: vec![]
+        return Ok(Node::Compare {
+            operator,
+            left: Box::new(left?),
+            right: Box::new(right),
         });
     }
 
@@ -387,13 +511,10 @@ impl Parser {
             };
             self.tokens.next();
             let right = self.parse_mul_and_div()?;
-            left = Node {
-                kind: NodeKind::Arithmetic {
-                    operator: Arithmetic::Binary(operator),
-                    left: Box::new(left),
-                    right: Some(Box::new(right))
-                },
-                children: vec![]
+            left = Node::Arithmetic {
+                operator: Arithmetic::Binary(operator),
+                left: Box::new(left),
+                right: Some(Box::new(right)),
             };
         }
         Ok(left)
@@ -406,13 +527,10 @@ impl Parser {
             let operator = operator.clone();
             self.tokens.next();
             let right = self.parse_unary()?;
-            left = Node {
-                kind: NodeKind::Arithmetic {
-                    operator: Arithmetic::Binary(operator),
-                    left: Box::new(left),
-                    right: Some(Box::new(right)),
-                },
-                children: vec![]
+            left = Node::Arithmetic {
+                operator: Arithmetic::Binary(operator),
+                left: Box::new(left),
+                right: Some(Box::new(right)),
             };
         }
         Ok(left)
@@ -429,13 +547,10 @@ impl Parser {
             TokenKind::ArithmeticOperator(Arithmetic::Unary(UnaryArithmetic::Minus)) => {
                 self.tokens.next();
                 let number = self.parse_primary()?;
-                Ok(Node {
-                    kind: NodeKind::Arithmetic {
-                        operator: Arithmetic::Unary(UnaryArithmetic::Minus),
-                        left: Box::new(number),
-                        right: None,
-                    },
-                    children: vec![],
+                Ok(Node::Arithmetic {
+                    operator: Arithmetic::Unary(UnaryArithmetic::Minus),
+                    left: Box::new(number),
+                    right: None,
                 })
             },
             _ => { Err(utils::get_error_message_with_location("PARSE002", token.row, token.col, &[])?) },
@@ -467,10 +582,7 @@ impl Parser {
     fn parse_variable(&mut self) -> Result<Node, String> {
         let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         if let TokenKind::Identifier(name) = token.kind {
-            Ok(Node {
-                kind: NodeKind::Variable { name },
-                children: vec![],
-            })
+            Ok(Node::Variable { name })
         } else {
             Err(utils::get_error_message_with_location("PARSE017", token.row, token.col, &[])?)
         }
@@ -481,32 +593,20 @@ impl Parser {
         let token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
         match token.kind {
             TokenKind::StringLiteral(value) => {
-                return Ok(Node {
-                    kind: NodeKind::Literal { value: LiteralValue::String(value) }, 
-                    children: vec![]
-                });
+                return Ok(Node::Literal { value: LiteralValue::String(value) });
             },
             TokenKind::NumberLiteral(value) => {
                 if let Ok(number) = value.parse::<f64>() {
-                    return Ok(Node {
-                        kind: NodeKind::Literal { value: LiteralValue::Float(number) },
-                        children: vec![],
-                    });
+                    return Ok(Node::Literal { value: LiteralValue::Float(number) });
                 }
             },
             TokenKind::BoolLiteral(value) => {
                 match value {
                     BoolValue::True => {
-                        return Ok(Node {
-                            kind: NodeKind::Literal { value: LiteralValue::Bool(true) },
-                            children: vec![],
-                        });
+                        return Ok(Node::Literal { value: LiteralValue::Bool(true) });
                     },
                     BoolValue::False => {
-                        return Ok(Node {
-                            kind: NodeKind::Literal { value: LiteralValue::Bool(false) },
-                            children: vec![],
-                        });
+                        return Ok(Node::Literal { value: LiteralValue::Bool(false) });
                     },
                 }
             },
