@@ -1,28 +1,5 @@
 use std::{iter::Peekable, vec::IntoIter};
-use crate::{keyword::{BoolValue, Keyword}, lexical_analyzer::{Token, TokenKind}, operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, utils::{self, get_error_message_with_location}};
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum LiteralValue {
-    Int(i32),
-    Float(f64),
-    String(String),
-    Bool(bool),
-}
-impl LiteralValue {
-    pub fn to_string(&self) -> String {
-        match self {
-            Self::Int(value) => return value.to_string(),
-            Self::Float(value) => return value.to_string(),
-            Self::String(value) => return value.to_string(),
-            Self::Bool(value) => {
-                match value {
-                    true => return "true".to_string(),
-                    false => return "false".to_string(),
-                }
-            },
-        }
-    }
-}
+use crate::{keyword::{BoolKeyword, Keyword}, lexical_analyzer::{Token, TokenKind}, operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, types::{LiteralValue, Type}, utils::{self, get_error_message_with_location}};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Node {
@@ -38,6 +15,7 @@ pub enum Node {
     /// 変数宣言
     VariableDeclaration {
         name: String,
+        variable_type: Type,
     },
     /// 変数代入
     VariableAssignment {
@@ -79,7 +57,7 @@ pub enum Node {
     /// 関数定義
     FunctionDefinition {
         name: String,
-        parameters: Vec<String>,
+        parameters: Vec<Node>,
         block: Box<Node>,
     },
 }
@@ -103,8 +81,8 @@ impl Node {
                     argument.print(depth+2);
                 }
             },
-            Self::VariableDeclaration { name } => {
-                println!("VariableDeaclaration: {}", name);
+            Self::VariableDeclaration { name, variable_type } => {
+                println!("VariableDeaclaration: {} ({})", name, variable_type.to_string());
             },
             Self::VariableAssignment { name, expression } => {
                 println!("VariableAssignment: {}", name);
@@ -162,8 +140,7 @@ impl Node {
             Self::FunctionDefinition { name, parameters, block } => {
                 println!("FunctionDefinition: {}", name);
                 for param in parameters {
-                    self.indent(depth+1);
-                    println!("param: {}", param);
+                    param.print(depth+1);
                 }
                 self.indent(depth+1);
                 println!("block:");
@@ -212,10 +189,17 @@ impl Parser {
                             let name = if let TokenKind::Identifier(name) = name_token.kind {
                                 name
                             } else {
-                                return Err("".to_string());
+                                return Err(format!("不正な変数名{}, {}", name_token.row, name_token.col));
+                            };
+                            self.check_next_token(TokenKind::Colon)?;
+                            let type_token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
+                            let variable_type = match type_token.kind {
+                                TokenKind::VariableType(variable_type) => variable_type,
+                                _ => return Err(format!("不正な型: {:?}", type_token.kind)),
                             };
                             children.push(Node::VariableDeclaration {
                                 name: name.to_string(),
+                                variable_type,
                             });
                             let next_token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
                             if next_token.kind == TokenKind::Semicolon {
@@ -308,8 +292,20 @@ impl Parser {
             } else {
                 return Err(utils::get_error_message_with_location("PARSE007", token.row, token.col, &[])?);
             };
-            parameters.push(name);
-
+            
+            self.check_next_token(TokenKind::Colon)?;
+            
+            let type_token = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?;
+            let variable_type = match type_token.kind {
+                TokenKind::VariableType(variable_type) => variable_type,
+                _ => return Err(format!("不正な型: {:?}", type_token.kind)),
+            };
+            let param = Node::VariableDeclaration {
+                name,
+                variable_type,
+            };
+            parameters.push(param);
+            
             let token = self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?;
             match token.kind {
                 TokenKind::Comma => { self.tokens.next(); },
@@ -368,14 +364,6 @@ impl Parser {
             _ => Err(utils::get_error_message_with_location("PARSE002", token.row, token.col, &[])?),
         }
     }
-
-    /// 変数定義の構文解析
-    // fn parse_variable_declaration(&mut self) -> Result<Node, String> {
-    //     Ok(Node {
-    //         kind: NodeKind::VariableDeclaration { name: name.to_string() },
-    //         children: vec![],
-    //     })
-    // }
 
     /// 引数の構文解析
     fn parse_argument(&mut self) -> Result<Vec<Node>, String> {
@@ -595,17 +583,31 @@ impl Parser {
             TokenKind::StringLiteral(value) => {
                 return Ok(Node::Literal { value: LiteralValue::String(value) });
             },
-            TokenKind::NumberLiteral(value) => {
-                if let Ok(number) = value.parse::<f64>() {
-                    return Ok(Node::Literal { value: LiteralValue::Float(number) });
+            TokenKind::NumberLiteral(integer) => {
+                if let Ok(int_value) = integer.parse::<i32>() {
+                    if TokenKind::Dot == self.tokens.peek().ok_or(utils::get_error_message("PARSE003", &[])?)?.kind {
+                        self.tokens.next();
+                        let mut number_string = integer.clone() + ".";
+                        if let TokenKind::NumberLiteral(decimal) = self.tokens.next().ok_or(utils::get_error_message("PARSE003", &[])?)?.kind {
+                            number_string.push_str(&decimal);
+                            if let Ok(float_value) = number_string.parse::<f64>() {
+                                return Ok(Node::Literal { value: LiteralValue::Float(float_value) });
+                            }
+                        } else {
+                            return Err(format!("不正な数値: {}", number_string))
+                        }
+                    } else {
+                        return Ok(Node::Literal { value: LiteralValue::Int(int_value) })
+                    }
                 }
+                return Err(format!("不正な数値: {}", &integer))
             },
             TokenKind::BoolLiteral(value) => {
                 match value {
-                    BoolValue::True => {
+                    BoolKeyword::True => {
                         return Ok(Node::Literal { value: LiteralValue::Bool(true) });
                     },
-                    BoolValue::False => {
+                    BoolKeyword::False => {
                         return Ok(Node::Literal { value: LiteralValue::Bool(false) });
                     },
                 }
@@ -627,6 +629,8 @@ impl Parser {
                     TokenKind::RParen => ")",
                     TokenKind::Semicolon => ";",
                     TokenKind::Equal => "=",
+                    TokenKind::Colon => ":",
+                    TokenKind::Comma => ",",
                     _ => "文字",
                 };
 

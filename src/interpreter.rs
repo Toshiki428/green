@@ -1,31 +1,10 @@
 use std::collections::HashMap;
 
-use crate::{operator::{ Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, parser::{LiteralValue, Node}, utils};
-
-#[derive(Debug, Clone)]
-enum GreenType {
-    Float(f64),
-    // Int(i32),
-    Bool(bool),
-    String(String),
-    Null,
-}
-
-impl ToString for GreenType {
-    fn to_string(&self) -> String {
-        match self {
-            // GreenType::Int(i) => i.to_string(),
-            GreenType::Float(f) => f.to_string(),
-            GreenType::String(s) => s.clone(),
-            GreenType::Bool(b) => b.to_string(),
-            GreenType::Null => "Null".to_string(),
-        }
-    }
-}
+use crate::{operator::{ Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, parser::Node, types::{LiteralValue, Type, GreenValue}, utils};
 
 #[derive(Debug)]
 struct Environment {
-    scopes: Vec<HashMap<String, GreenType>>,
+    scopes: Vec<HashMap<String, GreenValue>>,
 }
 
 impl Environment {
@@ -35,26 +14,33 @@ impl Environment {
         }
     }
 
-    fn set_variable(&mut self, name: String, value: GreenType) {
+    fn set_variable(&mut self, name: &String, value: &GreenValue) {
         if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(name, value);
+            scope.insert(name.clone(), value.clone());
         }
     }
 
-    fn get_variable(&mut self, name: &str) -> Result<GreenType, String> {
+    fn get_variable(&mut self, name: &str) -> Result<LiteralValue, String> {
         for scope in self.scopes.iter().rev() {
-            if let Some(value) = scope.get(name).cloned() {
-                return Ok(value);
+            if let Some(variable) = scope.get(name) {
+                return Ok(variable.value.clone());
             }
         }
         Err(utils::get_error_message("RUNTIME", &[("variable", name)])?)
     }
 
-    fn change_variable(&mut self, name: String, value: GreenType) -> Result<(), String> {
-        if let Some(scope) = self.scopes.last_mut() {
+    fn change_variable(&mut self, name: String, value: GreenValue) -> Result<(), String> {
+        for scope in self.scopes.iter_mut().rev() {
             if let Some(variable) = scope.get_mut(&name) {
-                *variable = value;
-                return Ok(());
+                if variable.value_type == value.value_type {
+                    variable.value = value.value;
+                    return Ok(())
+                } else {
+                    return Err(format!(
+                        "型エラー: 変数 '{}' は {} なのに {} を代入しようとしています",
+                        name, variable.value_type.to_string(), value.value_type.to_string()
+                    ));
+                }
             }
         }
         Err(utils::get_error_message("RUNTIME007", &[("variable", &name)])?)
@@ -71,7 +57,7 @@ impl Environment {
 
 struct Interpreter {
     variables: Environment,
-    functions: HashMap<String, (Vec<String>, Box<Node>)>,
+    functions: HashMap<String, (Vec<(String, Type)>, Box<Node>)>,
 }
 
 impl Interpreter {
@@ -98,8 +84,12 @@ impl Interpreter {
     fn statement(&mut self, node: &Node) -> Result<(), String> {
         match &node {
             Node::FunctionCall { name: _, arguments: _ } => self.execute_function(node)?,
-            Node::VariableDeclaration { name } => {
-                self.variables.set_variable(name.to_string(), GreenType::Null);
+            Node::VariableDeclaration { name, variable_type } => {
+                let value = GreenValue {
+                    value_type: variable_type.clone(),
+                    value: LiteralValue::Null,
+                };
+                self.variables.set_variable(name, &value);
             },
             Node::VariableAssignment { name, expression } => {
                 let value = self.evaluate_assignable(expression)?;
@@ -109,7 +99,16 @@ impl Interpreter {
                 self.evaluate_if_statement(condition_node, then_block, else_block)?
             },
             Node::FunctionDefinition { name, parameters, block } => {
-                self.functions.insert(name.to_string(), (parameters.clone(), block.clone()));
+                let mut variables = Vec::new();
+                for param in parameters {
+                    match param {
+                        Node::VariableDeclaration { name, variable_type } => {
+                            variables.push((name.to_string(), variable_type.clone()));
+                        },
+                        _ => return Err("謎の引数".to_string()),
+                    }
+                }
+                self.functions.insert(name.to_string(), (variables, block.clone()));
             },
             _ => return Err(utils::get_error_message("RUNTIME003", &[])?),
         }
@@ -119,7 +118,7 @@ impl Interpreter {
     /// print関数の実行
     fn print_function(&mut self, arguments: &Vec<Node>) -> Result<(), String> {
         let values = self.evaluate_argument(arguments)?;
-        let result = values.iter().map(ToString::to_string).collect::<Vec<_>>().join(" ");
+        let result = values.iter().map(|x| x.value.to_string()).collect::<Vec<_>>().join(" ");
         println!("{}", result);
         Ok(())
     }
@@ -142,8 +141,16 @@ impl Interpreter {
                             self.variables.push_scope();
 
                             let values = self.evaluate_argument(arguments)?;
-                            for (param, value) in parameters.iter().zip(values.iter()) {
-                                self.variables.set_variable(param.clone(), value.clone());
+                            for ((name, param), value) in parameters.into_iter().zip(values.into_iter()) {
+                                if param == value.value_type {
+                                    self.variables.set_variable(&name, &value);
+                                }
+                                else {
+                                    return Err(format!(
+                                        "関数 {} の引数の型が一致しません (期待: {}, 受け取った: {})",
+                                        name, param.to_string(), value.value_type.to_string(),
+                                    ))
+                                }
                             }
 
                             self.execute(&function_node)?;
@@ -161,7 +168,7 @@ impl Interpreter {
     }
 
     fn evaluate_if_statement(&mut self, condition_node: &Node, then_block: &Node, else_block: &Option<Box<Node>>) -> Result<(), String> {
-        if let GreenType::Bool(condition_result) = self.evaluate_assignable(&condition_node)? {
+        if let LiteralValue::Bool(condition_result) = self.evaluate_assignable(&condition_node)?.value {
             if condition_result {
                 self.execute(then_block)?;
             } else {
@@ -176,7 +183,7 @@ impl Interpreter {
     }
 
     /// 引数の評価
-    fn evaluate_argument(&mut self, arguments: &Vec<Node>) -> Result<Vec<GreenType>, String> {
+    fn evaluate_argument(&mut self, arguments: &Vec<Node>) -> Result<Vec<GreenValue>, String> {
         let mut values = Vec::new();
         for child in arguments {
             values.push(self.evaluate_assignable(child)?);
@@ -184,21 +191,31 @@ impl Interpreter {
         return Ok(values)
     }
 
-    /// 割り当て可能値の評価（引数、代入式の右辺）
-    fn evaluate_assignable(&mut self, node: &Node) -> Result<GreenType, String> {
-        match &node {
+    /// 割り当て可能値の評価（引数、代入式の右辺など）
+    /// LiteralValueからGreenValueへの変換も行う
+    fn evaluate_assignable(&mut self, node: &Node) -> Result<GreenValue, String> {
+        let literal_value = match &node {
             Node::Compare{ operator: _, left: _, right: _ } | Node::Arithmetic{ operator: _, left: _, right: _ }
             | Node::Variable { name: _ } | Node::Logical{ operator: _, left: _, right: _ } => {
-                self.evaluate_expression(node)
+                self.evaluate_expression(node)?
             },
-            Node::Literal{ value: _ } => self.evaluate_literal(node),
-            _ => Err(utils::get_error_message("RUNTIME005", &[])?),
+            Node::Literal{ value: _ } => self.evaluate_literal(node)?,
+            _ => return Err(utils::get_error_message("RUNTIME005", &[])?),
+        };
+
+        match literal_value {
+            LiteralValue::Bool(_) => Ok(GreenValue::new(Type::Bool, literal_value)),
+            LiteralValue::Float(_) => Ok(GreenValue::new(Type::Float, literal_value)),
+            LiteralValue::Int(_) => Ok(GreenValue::new(Type::Int, literal_value)),
+            LiteralValue::String(_) => Ok(GreenValue::new(Type::String, literal_value)),
+            LiteralValue::Null => Err("Null値には未対応".to_string()),
         }
     }
 
     /// 式の評価
-    fn evaluate_expression(&mut self, node: &Node) -> Result<GreenType, String> {
+    fn evaluate_expression(&mut self, node: &Node) -> Result<LiteralValue, String> {
         match &node {
+            // 論理演算
             Node::Logical {
                 operator,
                 left,
@@ -207,9 +224,9 @@ impl Interpreter {
                 match operator {
                     Logical::Unary(unary_operator) => {
                         let node = left;
-                        if let GreenType::Bool(value)  = self.evaluate_expression(node)? {
+                        if let LiteralValue::Bool(value)  = self.evaluate_expression(node)? {
                             let result = self.unary_logical_operations(unary_operator, value)?;
-                            Ok(GreenType::Bool(result))
+                            Ok(LiteralValue::Bool(result))
                         } else {
                             Err(format!("想定外の論理演算: 演算子: {:?} 値: {:?}", unary_operator, node))
                         }
@@ -221,9 +238,9 @@ impl Interpreter {
                             None => return Err(utils::get_error_message("RUNTIME009", &[])?),
                         };
                         match (left, right) {
-                            (GreenType::Bool(left_value), GreenType::Bool(right_value)) => {
+                            (LiteralValue::Bool(left_value), LiteralValue::Bool(right_value)) => {
                                 let result = self.binary_logical_operations(binary_operator, left_value, right_value)?;
-                                Ok(GreenType::Bool(result))
+                                Ok(LiteralValue::Bool(result))
                             },
                             (left_value, right_value) => {
                                 Err(format!("想定外の論理演算: 左: {:?} 演算子: {:?} 右: {:?}", left_value, binary_operator, right_value))
@@ -232,6 +249,7 @@ impl Interpreter {
                     },
                 }
             },
+            // 比較
             Node::Compare {
                 operator,
                 left,
@@ -239,15 +257,28 @@ impl Interpreter {
             } => {
                 let left = self.evaluate_expression(left)?;
                 let right = self.evaluate_expression(right)?;
-                match (left, right) {
-                    (GreenType::Float(left_value), GreenType::Float(right_value)) => {
+                match (left.clone(), right.clone()) {
+                    (LiteralValue::Float(_), LiteralValue::Float(_)) | 
+                    (LiteralValue::Int(_), LiteralValue::Int(_)) |
+                    (LiteralValue::Float(_), LiteralValue::Int(_)) |
+                    (LiteralValue::Int(_), LiteralValue::Float(_)) => {
+                        let left_value = match left {
+                            LiteralValue::Float(value) => value,
+                            LiteralValue::Int(value) => value as f64,
+                            _ => unreachable!(),
+                        };
+                        let right_value = match right {
+                            LiteralValue::Float(value) => value,
+                            LiteralValue::Int(value) => value as f64,
+                            _ => unreachable!(),
+                        };
                         let result = self.compare_values(operator, left_value, right_value)?;
-                        Ok(GreenType::Bool(result))
+                        Ok(LiteralValue::Bool(result))
                     },
-                    (GreenType::String(left_value), GreenType::String(right_value)) => {
+                    (LiteralValue::String(left_value), LiteralValue::String(right_value)) => {
                         match operator {
-                            Comparison::Equal => Ok(GreenType::Bool(left_value == right_value)),
-                            Comparison::NotEqual => Ok(GreenType::Bool(left_value != right_value)),
+                            Comparison::Equal => Ok(LiteralValue::Bool(left_value == right_value)),
+                            Comparison::NotEqual => Ok(LiteralValue::Bool(left_value != right_value)),
                             _ => Err(utils::get_error_message("RUNTIME006", &[("operator", format!("{:?}", operator).as_str())])?),
                         }
                     },
@@ -262,40 +293,67 @@ impl Interpreter {
                 left,
                 right
             } => {
-                match self.evaluate_expression(left)? {
-                    GreenType::Float(left_value) => {
-                        let right = match right {
-                            Some(right) => right,
-                            None => return Err(utils::get_error_message("RUNTIME009", &[])?),
+                let right = if let Some(right_node) = right {
+                    right_node
+                } else {
+                    return Err("右辺がない".to_string());
+                };
+                let left_literal = self.evaluate_expression(left)?;
+                let right_literal = self.evaluate_expression(right)?;
+                match (&left_literal, &right_literal) {
+                    (LiteralValue::Int(left_value), LiteralValue::Int(right_value)) => {
+                        match binary_operator {
+                            BinaryArithmetic::Add => Ok(LiteralValue::Int(left_value + right_value)),
+                            BinaryArithmetic::Subtract => Ok(LiteralValue::Int(left_value - right_value)),
+                            BinaryArithmetic::Multiply => Ok(LiteralValue::Int(left_value * right_value)),
+                            BinaryArithmetic::Divide => Ok(LiteralValue::Int(left_value / right_value)),
+                        }
+                    },
+                    (LiteralValue::Int(_), LiteralValue::Float(_)) |
+                    (LiteralValue::Float(_), LiteralValue::Int(_)) |
+                    (LiteralValue::Float(_), LiteralValue::Float(_)) => {
+                        let left_value = match left_literal {
+                            LiteralValue::Float(value) => value,
+                            LiteralValue::Int(value) => value as f64,
+                            _ => unreachable!(),
                         };
-                        let right_value = if let GreenType::Float(right_value) = self.evaluate_expression(right)?{
-                            right_value
-                        } else {
-                            return Err(format!("無効な演算: {:?}", node));
+                        let right_value = match right_literal {
+                            LiteralValue::Float(value) => value,
+                            LiteralValue::Int(value) => value as f64,
+                            _ => unreachable!(),
                         };
                         match binary_operator {
-                            BinaryArithmetic::Add => Ok(GreenType::Float(left_value + right_value)),
-                            BinaryArithmetic::Subtract => Ok(GreenType::Float(left_value - right_value)),
-                            BinaryArithmetic::Multiply => Ok(GreenType::Float(left_value * right_value)),
-                            BinaryArithmetic::Divide => Ok(GreenType::Float(left_value / right_value)),
+                            BinaryArithmetic::Add => Ok(LiteralValue::Float(left_value + right_value)),
+                            BinaryArithmetic::Subtract => Ok(LiteralValue::Float(left_value - right_value)),
+                            BinaryArithmetic::Multiply => Ok(LiteralValue::Float(left_value * right_value)),
+                            BinaryArithmetic::Divide => Ok(LiteralValue::Float(left_value / right_value)),
                         }
                     },
                     _ => Err(format!("想定外のAddAndSub型: {:?}", node))
                 }
             },
+
             Node::Arithmetic {
                 operator: Arithmetic::Unary(unary_operator),
                 left,
                 right: _,
             } => {
-                if let GreenType::Float(value) = self.evaluate_expression(left)?{
-                    let mut result = value;
-                    if *unary_operator == UnaryArithmetic::Minus {
-                        result = -1.0 * value;
-                    }
-                    Ok(GreenType::Float(result))
-                } else {
-                    Err(format!("想定外のPrimary型: {:?}", left))
+                match self.evaluate_expression(left)? {
+                    LiteralValue::Float(value) => {
+                        let mut result = value;
+                        if *unary_operator == UnaryArithmetic::Minus {
+                            result = -1.0 * value;
+                        }
+                        Ok(LiteralValue::Float(result))
+                    },
+                    LiteralValue::Int(value) => {
+                        let mut result = value;
+                        if *unary_operator == UnaryArithmetic::Minus {
+                            result = -1 * value;
+                        }
+                        Ok(LiteralValue::Int(result))
+                    },
+                    _ => Err(format!("想定外のPrimary型: {:?}", left)),
                 }
             },
             Node::Variable { name } => {
@@ -336,11 +394,9 @@ impl Interpreter {
     }
 
     /// 値の評価
-    fn evaluate_literal(&mut self, node: &Node) -> Result<GreenType, String> {
+    fn evaluate_literal(&mut self, node: &Node) -> Result<LiteralValue, String> {
         match &node {
-            Node::Literal { value: LiteralValue::String(string) } => Ok(GreenType::String(string.to_string())),
-            Node::Literal { value: LiteralValue::Float(float) } => Ok(GreenType::Float(*float)),
-            Node::Literal { value: LiteralValue::Bool(bool ) } => Ok(GreenType::Bool(*bool)),
+            Node::Literal { value } => Ok(value.clone()),
             _ => { Err(format!("想定外のリテラルの型: {:?}", node)) }
         }
     }

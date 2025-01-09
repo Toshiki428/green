@@ -7,10 +7,14 @@ pub enum Keyword {
     Match,
     Let,
     Function,
+    Int,
+    Float,
+    Bool,
+    String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum BoolValue {
+pub enum BoolKeyword {
     True,
     False,
 }

@@ -1,24 +1,27 @@
-use std::{iter::Peekable, str::Chars, vec};
+use std::{iter::Peekable, str::Chars};
 
-use crate::{keyword::{BoolValue, Keyword}, operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, utils};
+use crate::{keyword::{BoolKeyword, Keyword}, operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, types::Type, utils};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     Identifier(String),
     StringLiteral(String),
     NumberLiteral(String),
-    BoolLiteral(BoolValue),
+    BoolLiteral(BoolKeyword),
     ArithmeticOperator(Arithmetic),
     CompareOperator(Comparison),
     LogicalOperator(Logical),
     Keyword(Keyword),
+    VariableType(Type),
     LParen,
     RParen,
     LBrace,
     RBrace,
     Equal,
+    Colon,
     Semicolon,
     Comma,
+    Dot,
     EOF,
     DocComment(String),
     Comment,
@@ -57,8 +60,10 @@ impl<'a> Lexer<'a> {
                 ')' => {self.push_token(TokenKind::RParen); self.next_char();},
                 '{' => {self.push_token(TokenKind::LBrace); self.next_char();},
                 '}' => {self.push_token(TokenKind::RBrace); self.next_char();},
+                ':' => {self.push_token(TokenKind::Colon); self.next_char();}
                 ';' => {self.push_token(TokenKind::Semicolon); self.next_char();},
                 ',' => {self.push_token(TokenKind::Comma); self.next_char();},
+                '.' => {self.push_token(TokenKind::Dot); self.next_char();}
                 '+' => {self.push_token(TokenKind::ArithmeticOperator(Arithmetic::Unary(UnaryArithmetic::Plus))); self.next_char();},
                 '-' => {self.push_token(TokenKind::ArithmeticOperator(Arithmetic::Unary(UnaryArithmetic::Minus))); self.next_char();},
                 '*' => {self.push_token(TokenKind::ArithmeticOperator(Arithmetic::Binary(BinaryArithmetic::Multiply))); self.next_char();},
@@ -233,16 +238,20 @@ impl<'a> Lexer<'a> {
             self.next_char();
         }
         match string.as_str() {
-            "true" => self.push_token_with_location(TokenKind::BoolLiteral(BoolValue::True), self.row, start_col),
-            "false" => self.push_token_with_location(TokenKind::BoolLiteral(BoolValue::False), self.row, start_col),
-            "or" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Or)), self.row, self.col),
-            "and" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::And)), self.row, self.col),
-            "xor" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Xor)), self.row, self.col),
-            "not" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Unary(UnaryLogical::Not)), self.row, self.col),
+            "true" => self.push_token_with_location(TokenKind::BoolLiteral(BoolKeyword::True), self.row, start_col),
+            "false" => self.push_token_with_location(TokenKind::BoolLiteral(BoolKeyword::False), self.row, start_col),
+            "or" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Or)), self.row, start_col),
+            "and" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::And)), self.row, start_col),
+            "xor" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Xor)), self.row, start_col),
+            "not" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Unary(UnaryLogical::Not)), self.row, start_col),
             "let" => self.push_token_with_location(TokenKind::Keyword(Keyword::Let), self.row, start_col),
             "if" => self.push_token_with_location(TokenKind::Keyword(Keyword::If), self.row, start_col),
             "else" => self.push_token_with_location(TokenKind::Keyword(Keyword::Else), self.row, start_col),
-            "function" => self.push_token_with_location(TokenKind::Keyword(Keyword::Function), self.row, self.col),
+            "function" => self.push_token_with_location(TokenKind::Keyword(Keyword::Function), self.row, start_col),
+            "int" => self.push_token_with_location(TokenKind::VariableType(Type::Int), self.row, start_col),
+            "float" => self.push_token_with_location(TokenKind::VariableType(Type::Float), self.row, start_col),
+            "bool" => self.push_token_with_location(TokenKind::VariableType(Type::Bool), self.row, start_col),
+            "string" => self.push_token_with_location(TokenKind::VariableType(Type::String), self.row, start_col),
             _ => self.push_token_with_location(TokenKind::Identifier(string), self.row, start_col),
         }
 
@@ -255,20 +264,12 @@ impl<'a> Lexer<'a> {
         let mut number_string = String::new();
 
         while let Some(&c) = self.chars.peek() {
-            if c.is_numeric() || c == '.' {
+            if c.is_numeric() {
                 number_string.push(c);
                 self.next_char();
-            } else if vec![' ', ')', ';', ',', '+', '-', '*', '/', '=', '!', '\r', '\n'].contains(&c) {
-                break;
             } else {
-                number_string.push(c);
-                self.next_char();
                 break;
             }
-        }
-
-        if let Err(_) = number_string.parse::<f64>() {
-            return Err(utils::get_error_message_with_location("LEX006", self.row, start_col, &[("number", &number_string)])?);
         }
     
         self.push_token_with_location(TokenKind::NumberLiteral(number_string), self.row, start_col);
