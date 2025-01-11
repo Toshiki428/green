@@ -27,7 +27,7 @@ pub enum TokenKind {
     Comment,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,
     pub row: u32,
@@ -252,6 +252,7 @@ impl<'a> Lexer<'a> {
             "float" => self.push_token_with_location(TokenKind::VariableType(Type::Float), self.row, start_col),
             "bool" => self.push_token_with_location(TokenKind::VariableType(Type::Bool), self.row, start_col),
             "string" => self.push_token_with_location(TokenKind::VariableType(Type::String), self.row, start_col),
+            "return" => self.push_token_with_location(TokenKind::Keyword(Keyword::Return), self.row, start_col),
             _ => self.push_token_with_location(TokenKind::Identifier(string), self.row, start_col),
         }
 

@@ -51,3 +51,26 @@ impl GreenValue {
         Self { value_type, value }
     }
 }
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum BlockType {
+    /// 関数ブロック
+    Function,
+    /// 条件分岐ブロック
+    Conditional,
+    /// ループブロック
+    Loop,
+    /// グローバルブロック
+    Global,
+}
+
+impl BlockType {
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Conditional => "Conditional".to_string(),
+            Self::Function => "Function".to_string(),
+            Self::Global => "Global".to_string(),
+            Self::Loop => "Loop".to_string(),
+        }
+    }
+}

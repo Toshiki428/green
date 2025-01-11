@@ -100,3 +100,12 @@ test(first, 20);
 let a: int;
 a = 10;
 print(a);
+
+function test2(a: int, b: int) {
+    return a + b;
+}
+
+let a:int = test2(10, 2);
+print(a);
+let b:int = test2(a, 10);
+print(b, a);

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{operator::{ Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, parser::Node, types::{LiteralValue, Type, GreenValue}, utils};
+use crate::{operator::{ Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, parser::Node, types::{GreenValue, LiteralValue, Type}, utils};
 
 #[derive(Debug)]
 struct Environment {
@@ -69,21 +69,26 @@ impl Interpreter {
     }
 
     /// プログラムの実行
-    fn execute(&mut self, node: &Node) -> Result<(), String> {
+    fn execute(&mut self, node: &Node) -> Result<Option<GreenValue>, String> {
         match &node {
-            Node::Program { statements } => {
+            Node::Block { block_type:_, statements } => {
                 for child in statements {
-                    self.statement(child)?;
+                    let result = self.statement(child)?;
+                    if result.is_some() {
+                        return Ok(result)
+                    }
                 }
             },
             _ => return Err(utils::get_error_message("RUNTIME003", &[])?),
         }
-        Ok(())
+        Ok(None)
     }
 
-    fn statement(&mut self, node: &Node) -> Result<(), String> {
+    fn statement(&mut self, node: &Node) -> Result<Option<GreenValue>, String> {
         match &node {
-            Node::FunctionCall { name: _, arguments: _ } => self.execute_function(node)?,
+            Node::FunctionCall { name: _, arguments: _ } => {
+                self.execute_function(node)?;
+            },
             Node::VariableDeclaration { name, variable_type } => {
                 let value = GreenValue {
                     value_type: variable_type.clone(),
@@ -96,7 +101,7 @@ impl Interpreter {
                 self.variables.change_variable(name.to_string(), value)?;
             },
             Node::IfStatement { condition_node, then_block, else_block } => {
-                self.evaluate_if_statement(condition_node, then_block, else_block)?
+                self.evaluate_if_statement(condition_node, then_block, else_block)?;
             },
             Node::FunctionDefinition { name, parameters, block } => {
                 let mut variables = Vec::new();
@@ -110,9 +115,13 @@ impl Interpreter {
                 }
                 self.functions.insert(name.to_string(), (variables, block.clone()));
             },
+            Node::ReturnStatement { assignalbe } => {
+                let return_value = self.evaluate_assignable(assignalbe)?;
+                return Ok(Some(return_value));
+            },
             _ => return Err(utils::get_error_message("RUNTIME003", &[])?),
         }
-        Ok(())
+        Ok(None)
     }
 
     /// print関数の実行
@@ -123,9 +132,9 @@ impl Interpreter {
         Ok(())
     }
 
-    fn execute_function(&mut self, node: &Node) -> Result<(), String> {
+    fn execute_function(&mut self, node: &Node) -> Result<Option<GreenValue>, String> {
         match &node {
-            Node::FunctionCall { name, arguments } => {
+            Node::FunctionCall { name, arguments } | Node::FunctionCallWithReturn { name, arguments } => {
                 match name.as_str() {
                     "print" => self.print_function(arguments)?,
                     _ => {
@@ -153,7 +162,11 @@ impl Interpreter {
                                 }
                             }
 
-                            self.execute(&function_node)?;
+                            let result = self.execute(&function_node)?;
+                            if result.is_some() {
+                                self.variables.pop_scope();
+                                return Ok(result);
+                            }
                         } else {
                             return Err(utils::get_error_message("RUNTIME002", &[("function", name)])?);
                         }
@@ -161,7 +174,7 @@ impl Interpreter {
                         self.variables.pop_scope();
                     },
                 }
-                Ok(())
+                Ok(None)
             }
             _ => Err("Invalid function node".to_string()),
         }
@@ -198,6 +211,9 @@ impl Interpreter {
             Node::Compare{ operator: _, left: _, right: _ } | Node::Arithmetic{ operator: _, left: _, right: _ }
             | Node::Variable { name: _ } | Node::Logical{ operator: _, left: _, right: _ } => {
                 self.evaluate_expression(node)?
+            },
+            Node::FunctionCallWithReturn { name:_, arguments:_ } => {
+                self.execute_function(node)?.ok_or("err")?.value
             },
             Node::Literal{ value: _ } => self.evaluate_literal(node)?,
             _ => return Err(utils::get_error_message("RUNTIME005", &[])?),

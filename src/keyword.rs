@@ -11,6 +11,7 @@ pub enum Keyword {
     Float,
     Bool,
     String,
+    Return,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -6,13 +6,13 @@
 <statements> ::= <statement> | <statements> <statement>
 <statement> ::= <function_call> | <variable_declaration> | <if_statement> | <function_definition>
 <if_statement> ::= "if" "(" <assignable> ")" <block> [ "else" <block> ]
-<block> ::= "{" <statements> "}"
 <function_definition> = "function" <function_name> "(" ((<variable> ":" <type> "," )* <variable> ":" <type>)? ")" <block>
+<block> ::= "{" <statements> ("return" <assignable>)? ";" "}"
 <function_call> ::= <function_name> "(" <argument> ")"
 <argument> ::= <assignable>
 <variable_declaration> ::= "let " <variable> ":" <type> "=" <assignable>
 <type> ::= "int" | "float" | "string" | "bool"
-<assignable> ::= <expression> | <literal>
+<assignable> ::= <expression> | <literal> | <function_call>
 <literal> ::= <bool> | <string> | <number>
 <expression> ::= <logical> | <compare> | <add_and_sub> | <mul_and_div> | <unary> | <variable>
 <logical> ::= <or_expr> | <and_expr> | <not_expr>
