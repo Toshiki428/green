@@ -1,8 +1,6 @@
 pub mod utils;
-pub mod cli_arg_parse;
+pub mod cli;
 pub mod interpreter;
-pub mod lexical_analyzer;
+pub mod lexer;
 pub mod parser;
-pub mod operator;
-pub mod keyword;
-pub mod types;
+pub mod common;

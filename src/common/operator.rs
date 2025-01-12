@@ -47,54 +47,57 @@ pub enum Comparison {
 }
 
 impl Logical {
-    pub fn as_str(&self) -> &str {
-        match self {
+    pub fn to_string(&self) -> String {
+        let operator = match self {
             Self::Binary(binary_logical) => {
                 match binary_logical {
-                    BinaryLogical::And => return "and",
-                    BinaryLogical::Or => return "or",
-                    BinaryLogical::Xor => return "xor",
+                    BinaryLogical::And => "and",
+                    BinaryLogical::Or => "or",
+                    BinaryLogical::Xor => "xor",
                 }
             },
             Self::Unary(unary_logical) => {
                 match unary_logical {
-                    UnaryLogical::Not => return "not",
+                    UnaryLogical::Not => "not",
                 }
             }
-        }
+        };
+        operator.to_string()
     }
 }
 
 impl Arithmetic {
-    pub fn as_str(&self) -> &str {
-        match self {
+    pub fn to_string(&self) -> String {
+        let operator = match self {
             Arithmetic::Binary(binary_arithmetic) => {
                 match binary_arithmetic {
-                    BinaryArithmetic::Add => return "+",
-                    BinaryArithmetic::Subtract => return "-",
-                    BinaryArithmetic::Multiply => return "*",
-                    BinaryArithmetic::Divide => return "/",
+                    BinaryArithmetic::Add => "+",
+                    BinaryArithmetic::Subtract => "-",
+                    BinaryArithmetic::Multiply => "*",
+                    BinaryArithmetic::Divide => "/",
                 }
             },
             Arithmetic::Unary(unary_arithmetic) => {
                 match unary_arithmetic {
-                    UnaryArithmetic::Plus => return "+",
-                    UnaryArithmetic::Minus => return "-",
+                    UnaryArithmetic::Plus => "+",
+                    UnaryArithmetic::Minus => "-",
                 }
             },
-        }
+        };
+        operator.to_string()
     }
 }
 
 impl Comparison {
-    pub fn as_str(&self) -> &str {
-        match self {
+    pub fn to_string(&self) -> String {
+        let operator = match self {
             Self::Equal => "==",
             Self::NotEqual => "!=",
             Self::Greater => ">",
             Self::Less => "<",
             Self::GreaterEqual => ">=",
             Self::LessEqual => "<=",
-        }
+        };
+        operator.to_string()
     }
 }

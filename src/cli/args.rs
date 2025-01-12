@@ -1,4 +1,5 @@
-use crate::utils;
+use crate::utils::error_message::ErrorMessage;
+use crate::common::error_code::ErrorCode;
 
 pub struct Config {
     pub option: RunMode,
@@ -16,10 +17,7 @@ impl RunMode {
         match s {
             "-exe" => Ok(RunMode::Execute),
             "-ana" => Ok(RunMode::Analysis),
-            _ => {
-                let message = utils::get_error_message("CMD001", &[("option", s)])?;
-                Err(message)
-            }
+            _ => Err(ErrorMessage::global().get_error_message(&ErrorCode::Cmd001, &[("option", s)])?),
         }
     }
 }
@@ -30,7 +28,7 @@ impl Config {
             3 => (args[1].clone(), args[2].clone()),
             2 => ("-exe".to_string(), args[1].clone()),
             1 => ("-exe".to_string(), "main.grn".to_string()),
-            _ => return Err(utils::get_error_message("CMD002", &[])?),
+            _ => return Err(ErrorMessage::global().get_error_message(&ErrorCode::Cmd002, &[])?),
         };
 
         let option = RunMode::from_str(&option_str)?;

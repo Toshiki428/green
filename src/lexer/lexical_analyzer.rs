@@ -1,38 +1,16 @@
 use std::{iter::Peekable, str::Chars};
-
-use crate::{keyword::{BoolKeyword, Keyword}, operator::{Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical}, types::Type, utils};
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum TokenKind {
-    Identifier(String),
-    StringLiteral(String),
-    NumberLiteral(String),
-    BoolLiteral(BoolKeyword),
-    ArithmeticOperator(Arithmetic),
-    CompareOperator(Comparison),
-    LogicalOperator(Logical),
-    Keyword(Keyword),
-    VariableType(Type),
-    LParen,
-    RParen,
-    LBrace,
-    RBrace,
-    Equal,
-    Colon,
-    Semicolon,
-    Comma,
-    Dot,
-    EOF,
-    DocComment(String),
-    Comment,
-}
-
-#[derive(Debug, Clone)]
-pub struct Token {
-    pub kind: TokenKind,
-    pub row: u32,
-    pub col: u32,
-}
+use crate::{
+    common::{
+        operator::*,
+        types::Type, 
+        error_code::ErrorCode,
+    },
+    lexer::{
+        keyword::{BoolKeyword, Keyword},
+        token::{Token, TokenKind},
+    },
+    utils::error_message::ErrorMessage,
+};
 
 pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
@@ -74,7 +52,7 @@ impl<'a> Lexer<'a> {
                 '<' | '>' => self.lex_angle()?,
                 _ if char.is_alphabetic() => self.lex_identifier()?,
                 _ if char.is_numeric() => self.lex_number()?,
-                _ => return Err(utils::get_error_message_with_location("LEX002", self.row, self.col, &[("char", &char.to_string())])?),
+                _ => return Err(ErrorMessage::global().get_error_message_with_location(&ErrorCode::Lex002, self.row, self.col, &[("char", &char.to_string())])?),
             }
         }
         self.push_token(TokenKind::EOF);
@@ -98,7 +76,7 @@ impl<'a> Lexer<'a> {
         }
 
         if self.chars.peek() != Some(&'"') {
-            return Err(utils::get_error_message_with_location("LEX003", self.row, self.col, &[])?);
+            return Err(ErrorMessage::global().get_error_message_with_location(&ErrorCode::Lex003, self.row, self.col, &[])?);
         }
         self.next_char();   // 閉じる「"」をスキップ
         self.push_token(TokenKind::StringLiteral(string));
@@ -152,7 +130,7 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 if self.chars.peek().is_none() {
-                    return Err(utils::get_error_message_with_location("LEX004", self.row, self.col, &[])?);
+                    return Err(ErrorMessage::global().get_error_message_with_location(&ErrorCode::Lex004, self.row, self.col, &[])?);
                 }
                 token_kind = TokenKind::Comment;
             },
@@ -193,7 +171,7 @@ impl<'a> Lexer<'a> {
             operator.push(c);
             match operator.as_str() {
                 "!=" => { self.push_token(TokenKind::CompareOperator(Comparison::NotEqual)); self.next_char(); },
-                _ => { return Err(utils::get_error_message_with_location("LEX005", self.row, self.col, &[("operator", &operator)])?); },
+                _ => { return Err(ErrorMessage::global().get_error_message_with_location(&ErrorCode::Lex005, self.row, self.col, &[("operator", &operator)])?); },
             }
         }
         Ok(())
@@ -204,17 +182,17 @@ impl<'a> Lexer<'a> {
         let start_col = self.col;
         let mut operator = match self.chars.peek() {
             Some(&c) => c.to_string(),
-            _ => return Err(utils::get_error_message("ALL", &[])?),
+            _ => unreachable!(),
         };
         self.next_char();
         while let Some(&c) = self.chars.peek() {
             match c {
-                '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' | ' ' | '\r' |'\n' => {
-                    break;
-                },
-                _ => {
+                '=' => {
                     operator.push(c);
                     self.next_char();
+                },
+                _ => {
+                    break;
                 },
             }
         }
@@ -223,7 +201,7 @@ impl<'a> Lexer<'a> {
             "<" => self.push_token(TokenKind::CompareOperator(Comparison::Less)),
             ">=" => self.push_token(TokenKind::CompareOperator(Comparison::GreaterEqual)),
             ">" => self.push_token(TokenKind::CompareOperator(Comparison::Greater)),
-            _ => { return Err(utils::get_error_message_with_location("LEX005", self.row, start_col, &[("operator", &operator)])?); }
+            _ => return Err(ErrorMessage::global().get_error_message_with_location(&ErrorCode::Lex005, self.row, start_col, &[("operator", &operator)])?),
         }
         Ok(())
     }
