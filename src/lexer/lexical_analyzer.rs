@@ -225,6 +225,7 @@ impl<'a> Lexer<'a> {
             "let" => self.push_token_with_location(TokenKind::Keyword(Keyword::Let), self.row, start_col),
             "if" => self.push_token_with_location(TokenKind::Keyword(Keyword::If), self.row, start_col),
             "else" => self.push_token_with_location(TokenKind::Keyword(Keyword::Else), self.row, start_col),
+            "while" => self.push_token_with_location(TokenKind::Keyword(Keyword::While), self.row, start_col),
             "function" => self.push_token_with_location(TokenKind::Keyword(Keyword::Function), self.row, start_col),
             "int" => self.push_token_with_location(TokenKind::VariableType(Type::Int), self.row, start_col),
             "float" => self.push_token_with_location(TokenKind::VariableType(Type::Float), self.row, start_col),

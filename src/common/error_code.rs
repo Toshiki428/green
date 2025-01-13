@@ -45,6 +45,7 @@ pub enum ErrorCode {
     Runtime014,
     Runtime015,
     Runtime016,
+    Runtime017,
     ALL,
 }
 
@@ -80,6 +81,7 @@ impl ErrorCode {
             Self::Runtime014 => "RUNTIME014",
             Self::Runtime015 => "RUNTIME015",
             Self::Runtime016 => "RUNTIME016",
+            Self::Runtime017 => "RUNTIME017",
             Self::ALL => "ALL",
         };
         str.to_string()

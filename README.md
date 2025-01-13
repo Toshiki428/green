@@ -4,9 +4,10 @@
 ```txt
 <program> ::= <statements>
 <statements> ::= <statement> | <statements> <statement>
-<statement> ::= <function_call> | <variable_declaration> | <if_statement> | <function_definition>
+<statement> ::= <function_call> | <variable_declaration> | <if_statement> | <function_definition> | <while_statement>
 <if_statement> ::= "if" "(" <assignable> ")" <block> [ "else" <block> ]
 <function_definition> = "function" <function_name> "(" ((<variable> ":" <type> "," )* <variable> ":" <type>)? ")" <block>
+<while_statement> ::= "while" "(" <assignable> ")" <block>
 <block> ::= "{" <statements> ("return" <assignable>)? ";" "}"
 <function_call> ::= <function_name> "(" <argument> ")"
 <argument> ::= <assignable>

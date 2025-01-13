@@ -62,6 +62,9 @@ impl Interpreter {
             Node::IfStatement { condition_node, then_block, else_block } => {
                 self.evaluate_if_statement(condition_node, then_block, else_block)?;
             },
+            Node::LoopStatement { condition_node, block } => {
+                self.evaluate_loop_statement(condition_node, block)?;
+            },
             Node::FunctionDefinition { name, parameters, block } => {
                 let mut variables = Vec::new();
                 for param in parameters {
@@ -166,6 +169,24 @@ impl Interpreter {
             } else {
                 if let Some(else_node) = else_block {
                     self.execute(else_node)?;
+                }
+            }
+        } else {
+            return Err(ErrorMessage::global().get_error_message(
+                &ErrorCode::Runtime014,
+                &[("node", &format!("{:?}",condition_node))],
+            )?)
+        }
+        Ok(())
+    }
+
+    fn evaluate_loop_statement(&mut self, condition_node: &Node, block: &Node) -> Result<(), String> {
+        if let LiteralValue::Bool(_) = self.evaluate_assignable(&condition_node)?.value {
+            while let LiteralValue::Bool(condition_result) = self.evaluate_assignable(&condition_node)?.value {
+                if condition_result {
+                    self.execute(block)?;
+                } else {
+                    break
                 }
             }
         } else {

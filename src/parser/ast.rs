@@ -120,6 +120,7 @@ impl Parser {
                             }
                         },
                         Keyword::If => children.push(self.parse_if_statement()?),
+                        Keyword::While => children.push(self.parse_loop_statement()?),
                         Keyword::Function => children.push(self.parse_function_definition()?),
                         Keyword::Return => {
                             if block_type == BlockType::Function {
@@ -193,6 +194,24 @@ impl Parser {
             condition_node: Box::new(condition),
             then_block: Box::new(then_block),
             else_block: else_block.map(Box::new),
+        })
+    }
+
+    fn parse_loop_statement(&mut self) -> Result<Node, String> {
+        self.tokens.next();
+        self.check_next_token(TokenKind::LParen)?;
+
+        let condition_node = self.parse_expression()?;
+
+        self.check_next_token(TokenKind::RParen)?;
+        self.check_next_token(TokenKind::LBrace)?;
+
+        let block = self.parse_statements(BlockType::Loop)?;
+
+        self.check_next_token(TokenKind::RBrace)?;
+        Ok(Node::LoopStatement {
+            condition_node: Box::new(condition_node),
+            block: Box::new(block),
         })
     }
 

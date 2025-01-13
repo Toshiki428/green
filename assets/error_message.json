@@ -8,7 +8,7 @@
     "LEX004": "コメントの終端が見つからない {row}行 {col}列目",
     "LEX005": "定義されていない演算子: {operator} \n {row}行 {col}列目",
     "LEX006": "想定外の数値: {number} \n {row}行 {col}列目",
-    "PARSE001": "構文エラー：\n {message}",
+    "PARSE001": "構文エラー： \n {message}",
     "PARSE002": "想定外のトークン: {token} \n {row}行 {col}列目",
     "PARSE003": "想定外のプログラム終了",
     "PARSE004": "想定外の数値: {number} \n {row}行 {col}列目",
@@ -28,5 +28,6 @@
     "RUNTIME014": "想定外のif条件: {node}",
     "RUNTIME015": "想定外の演算: 左: {left} 演算子: {operator} 右: {right}",
     "RUNTIME016": "異なる型の比較: 左: {left} 演算子: {operator} 右: {right}",
+    "RUNTIME017": "想定外のループ条件: {node}",
     "ALL": "不明なエラー"
 }

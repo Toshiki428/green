@@ -62,6 +62,11 @@ pub enum Node {
         then_block: Box<Node>,
         else_block: Option<Box<Node>>,
     },
+    /// ループ文
+    LoopStatement {
+        condition_node: Box<Node>,
+        block: Box<Node>,
+    },
     /// 関数定義
     FunctionDefinition {
         name: String,
@@ -155,6 +160,15 @@ impl Node {
                     println!("else_block");
                     node.print(depth+2);
                 }
+            },
+            Self::LoopStatement { condition_node, block } => {
+                println!("LoopStatement:");
+                self.indent(depth+1);
+                println!("condition_node");
+                condition_node.print(depth+2);
+                self.indent(depth+1);
+                println!("block");
+                block.print(depth+2);
             },
             Self::FunctionDefinition { name, parameters, block } => {
                 println!("FunctionDefinition: {}", name);
