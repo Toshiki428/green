@@ -1,22 +1,20 @@
-use crate::{
-    lexer::keyword::{BoolKeyword, Keyword},
-    common::{
-        operator::{Arithmetic, Comparison, Logical},
-        types::Type, 
-    },
+use crate::common::{
+    keyword::*,
+    operator::{Arithmetic, Comparison, Logical},
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
+    // 識別子やリテラル
     Identifier(String),
     StringLiteral(String),
     NumberLiteral(String),
     BoolLiteral(BoolKeyword),
+
+    // 演算子や記号
     ArithmeticOperator(Arithmetic),
     CompareOperator(Comparison),
     LogicalOperator(Logical),
-    Keyword(Keyword),
-    VariableType(Type),
     LParen,
     RParen,
     LBrace,
@@ -26,7 +24,18 @@ pub enum TokenKind {
     Semicolon,
     Comma,
     Dot,
+
+    // キーワード
+    ControlKeyword(ControlKeyword),
+    DeclarationKeyword(DeclarationKeyword),
+    TypeName(TypeName),
+    LoopControl(LoopControl),
+    FunctionControl(FunctionControl),
+
+    // 終端
     EOF,
+
+    // その他
     DocComment(String),
     Comment,
 }
@@ -41,27 +50,35 @@ pub struct Token {
 impl TokenKind {
     pub fn to_string(&self) -> String {
         let token_str = match self {
+            Self::Identifier(string) => string,
+            Self::BoolLiteral(operator) => &operator.to_string(),
+            Self::NumberLiteral(string) => string,
+            Self::StringLiteral(string) => string,
+
             Self::ArithmeticOperator(operator) => &operator.to_string(),
-            Self::BoolLiteral(operator) => &format!("{:?}", operator),
+            Self::CompareOperator(operator) => &operator.to_string(),
+            Self::LogicalOperator(operator) => &operator.to_string(),
             Self::Colon => ":",
             Self::Comma => ",",
-            Self::Comment => "",
-            Self::CompareOperator(operator) => &operator.to_string(),
-            Self::DocComment(_) => "",
-            Self::Dot => ".",
-            Self::EOF => "EOF",
-            Self::Equal => "==",
-            Self::Identifier(string) => string,
-            Self::Keyword(keyword) => &format!("{:?}", keyword),
             Self::LBrace => "{",
             Self::LParen => "(",
-            Self::LogicalOperator(operator) => &operator.to_string(),
-            Self::NumberLiteral(string) => string,
+            Self::Equal => "=",
             Self::RBrace => "}",
             Self::RParen => ")",
             Self::Semicolon => ";",
-            Self::StringLiteral(string) => string,
-            Self::VariableType(varialbe_type) => &varialbe_type.to_string(),
+            Self::Dot => ".",
+            
+            Self::ControlKeyword(keyword) => &keyword.to_string(),
+            Self::TypeName(type_name) => &type_name.to_string(),
+            Self::DeclarationKeyword(keyword) => &keyword.to_string(),
+            Self::LoopControl(keyword) => &keyword.to_string(),
+            Self::FunctionControl(keyword) => &keyword.to_string(),
+
+            Self::EOF => "EOF",
+            
+            Self::Comment => "",
+            Self::DocComment(_) => "",
+            
         };
         token_str.to_string()
     }

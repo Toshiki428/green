@@ -1,14 +1,9 @@
 use std::{iter::Peekable, str::Chars};
 use crate::{
     common::{
-        operator::*,
-        types::Type, 
-        error_code::ErrorCode,
+        error_code::ErrorCode, keyword::*, operator::*
     },
-    lexer::{
-        keyword::{BoolKeyword, Keyword},
-        token::{Token, TokenKind},
-    },
+    lexer::token::{Token, TokenKind},
     utils::error_message::ErrorMessage,
 };
 
@@ -42,9 +37,13 @@ impl<'a> Lexer<'a> {
                 ';' => {self.push_token(TokenKind::Semicolon); self.next_char();},
                 ',' => {self.push_token(TokenKind::Comma); self.next_char();},
                 '.' => {self.push_token(TokenKind::Dot); self.next_char();}
-                '+' => {self.push_token(TokenKind::ArithmeticOperator(Arithmetic::Unary(UnaryArithmetic::Plus))); self.next_char();},
-                '-' => {self.push_token(TokenKind::ArithmeticOperator(Arithmetic::Unary(UnaryArithmetic::Minus))); self.next_char();},
-                '*' => {self.push_token(TokenKind::ArithmeticOperator(Arithmetic::Binary(BinaryArithmetic::Multiply))); self.next_char();},
+                '+' | '-' | '*' => {
+                    match Arithmetic::from_str(&char.to_string()) {
+                        Some(operator) => self.push_token(TokenKind::ArithmeticOperator(operator)),
+                        _ => unreachable!(),
+                    }
+                    self.next_char();
+                },
                 '/' => self.lex_slash()?,
                 '"' => self.lex_string()?,
                 '=' => self.lex_equal()?,
@@ -75,7 +74,7 @@ impl<'a> Lexer<'a> {
             self.next_char();
         }
 
-        if self.chars.peek() != Some(&'"') {
+        if self.peek_char()? != '"' {
             return Err(ErrorMessage::global().get_error_message_with_location(&ErrorCode::Lex003, self.row, self.col, &[])?);
         }
         self.next_char();   // 閉じる「"」をスキップ
@@ -90,9 +89,13 @@ impl<'a> Lexer<'a> {
         self.next_char();       // 最初の`/`をスキップ
         let token_kind: TokenKind;
 
-        let c = self.chars.peek();
-        match c {
-            Some(&'/') => {
+        let symbol = match self.peek_char()? {
+            '/' => "//",
+            '*' => "/*",
+            _ => "/",
+        };
+        match symbol {
+            "//" => {
                 self.next_char();
                 match self.chars.peek() {
                     Some('/') => {
@@ -118,24 +121,25 @@ impl<'a> Lexer<'a> {
                     },
                 }
             },
-            Some(&'*') => {
+            "/*" => {
                 self.next_char();
-                while let Some(&c) = self.chars.peek() {
+                loop {
+                    let c = self.peek_char()?;
                     self.next_char();
                     if c == '*' {
-                        if let Some('/') = self.chars.peek() {
+                        if self.peek_char()? == '/' {
                             self.next_char();
                             break;
                         }
                     }
                 }
-                if self.chars.peek().is_none() {
-                    return Err(ErrorMessage::global().get_error_message_with_location(&ErrorCode::Lex004, self.row, self.col, &[])?);
-                }
                 token_kind = TokenKind::Comment;
             },
             _ => {
-                token_kind = TokenKind::ArithmeticOperator(Arithmetic::Binary(BinaryArithmetic::Divide));
+                match Arithmetic::from_str("/") {
+                    Some(operator) => token_kind = TokenKind::ArithmeticOperator(operator),
+                    None => unreachable!(),
+                }
             },
         } 
 
@@ -150,29 +154,49 @@ impl<'a> Lexer<'a> {
 
     /// イコール記号の字句解析処理
     fn lex_equal(&mut self) -> Result<(), String> {
-        let mut operator = "=".to_string();
         self.next_char();
-        if let Some(&c) = self.chars.peek() {
-            operator.push(c);
-            match operator.as_str() {
-                "==" => { self.push_token(TokenKind::CompareOperator(Comparison::Equal)); self.next_char(); },
-                _ => { self.push_token(TokenKind::Equal); },
-                
-            }
+        let operator = match self.peek_char()? {
+            '=' => "==",
+            _ => "=",
+        };
+
+        match operator {
+            "==" => {
+                match Comparison::from_str(operator) {
+                    Some(op) => self.push_token(TokenKind::CompareOperator(op)),
+                    None => unreachable!(),
+                }
+                self.next_char();
+            },
+            _ => { self.push_token(TokenKind::Equal); },
+            
         }
         Ok(())
     }
 
     /// ビックリマークの字句解析処理
     fn lex_exclamation(&mut self) -> Result<(), String> {
-        let mut operator = "!".to_string();
         self.next_char();
-        if let Some(&c) = self.chars.peek() {
-            operator.push(c);
-            match operator.as_str() {
-                "!=" => { self.push_token(TokenKind::CompareOperator(Comparison::NotEqual)); self.next_char(); },
-                _ => { return Err(ErrorMessage::global().get_error_message_with_location(&ErrorCode::Lex005, self.row, self.col, &[("operator", &operator)])?); },
-            }
+        let operator = match self.peek_char()? {
+            '=' => "!=",
+            _ => "!",
+        };
+
+        match operator {
+            "!=" => {
+                match Comparison::from_str(operator) {
+                    Some(op) => self.push_token(TokenKind::CompareOperator(op)),
+                    None => unreachable!(),
+                }
+                self.next_char();
+            },
+            _ => return Err(
+                ErrorMessage::global().get_error_message_with_location(
+                    &ErrorCode::Lex005,
+                    self.row, self.col,
+                    &[("operator", &operator)]
+                )?
+            ),
         }
         Ok(())
     }
@@ -180,12 +204,11 @@ impl<'a> Lexer<'a> {
     /// `<`と`>`の字句解析
     fn lex_angle(&mut self) -> Result<(), String> {
         let start_col = self.col;
-        let mut operator = match self.chars.peek() {
-            Some(&c) => c.to_string(),
-            _ => unreachable!(),
-        };
+        let mut operator = self.peek_char()?.to_string();
         self.next_char();
-        while let Some(&c) = self.chars.peek() {
+
+        loop {
+            let c = self.peek_char()?;
             match c {
                 '=' => {
                     operator.push(c);
@@ -196,12 +219,19 @@ impl<'a> Lexer<'a> {
                 },
             }
         }
+
         match operator.as_str() {
-            "<=" => self.push_token(TokenKind::CompareOperator(Comparison::LessEqual)),
-            "<" => self.push_token(TokenKind::CompareOperator(Comparison::Less)),
-            ">=" => self.push_token(TokenKind::CompareOperator(Comparison::GreaterEqual)),
-            ">" => self.push_token(TokenKind::CompareOperator(Comparison::Greater)),
-            _ => return Err(ErrorMessage::global().get_error_message_with_location(&ErrorCode::Lex005, self.row, start_col, &[("operator", &operator)])?),
+            "<=" | "<" | ">=" | ">" => {
+                match Comparison::from_str(&operator) {
+                    Some(op) => self.push_token(TokenKind::CompareOperator(op)),
+                    None => unreachable!(),
+                }
+            },
+            _ => return Err(ErrorMessage::global().get_error_message_with_location(
+                &ErrorCode::Lex005,
+                self.row, start_col,
+                &[("operator", &operator)],
+            )?),
         }
         Ok(())
     }
@@ -210,28 +240,55 @@ impl<'a> Lexer<'a> {
     fn lex_identifier(&mut self) -> Result<(), String> {
         let start_col = self.col;
         let mut string = String::new();
-        while let Some(&c) = self.chars.peek() {
+        loop {
+            let c = self.peek_char()?;
             if !c.is_alphabetic() && !c.is_numeric() { break; }
             string.push(c);
             self.next_char();
         }
         match string.as_str() {
-            "true" => self.push_token_with_location(TokenKind::BoolLiteral(BoolKeyword::True), self.row, start_col),
-            "false" => self.push_token_with_location(TokenKind::BoolLiteral(BoolKeyword::False), self.row, start_col),
-            "or" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Or)), self.row, start_col),
-            "and" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::And)), self.row, start_col),
-            "xor" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Xor)), self.row, start_col),
-            "not" => self.push_token_with_location(TokenKind::LogicalOperator(Logical::Unary(UnaryLogical::Not)), self.row, start_col),
-            "let" => self.push_token_with_location(TokenKind::Keyword(Keyword::Let), self.row, start_col),
-            "if" => self.push_token_with_location(TokenKind::Keyword(Keyword::If), self.row, start_col),
-            "else" => self.push_token_with_location(TokenKind::Keyword(Keyword::Else), self.row, start_col),
-            "while" => self.push_token_with_location(TokenKind::Keyword(Keyword::While), self.row, start_col),
-            "function" => self.push_token_with_location(TokenKind::Keyword(Keyword::Function), self.row, start_col),
-            "int" => self.push_token_with_location(TokenKind::VariableType(Type::Int), self.row, start_col),
-            "float" => self.push_token_with_location(TokenKind::VariableType(Type::Float), self.row, start_col),
-            "bool" => self.push_token_with_location(TokenKind::VariableType(Type::Bool), self.row, start_col),
-            "string" => self.push_token_with_location(TokenKind::VariableType(Type::String), self.row, start_col),
-            "return" => self.push_token_with_location(TokenKind::Keyword(Keyword::Return), self.row, start_col),
+            "true" | "false" => {
+                match BoolKeyword::from_str(&string) {
+                    Some(keyword) => self.push_token_with_location(TokenKind::BoolLiteral(keyword), self.row, start_col),
+                    None => unreachable!(),
+                }
+            },
+            "or" | "and" | "xor" | "not" => {
+                match Logical::from_str(&string) {
+                    Some(op) => self.push_token_with_location(TokenKind::LogicalOperator(op), self.row, start_col),
+                    None => unreachable!(),
+                }
+            },
+            "if" | "else" | "for" | "while" | "match" => {
+                match ControlKeyword::from_str(&string) {
+                    Some(keyword) => self.push_token_with_location(TokenKind::ControlKeyword(keyword), self.row, start_col),
+                    None => unreachable!(),
+                }
+            },
+            "let" | "function" => {
+                match DeclarationKeyword::from_str(&string) {
+                    Some(keyword) => self.push_token_with_location(TokenKind::DeclarationKeyword(keyword), self.row, start_col),
+                    None => unreachable!(),
+                }
+            },
+            "int" | "float" | "bool" | "string" => {
+                match TypeName::from_str(&string) {
+                    Some(keyword) => self.push_token_with_location(TokenKind::TypeName(keyword), self.row, start_col),
+                    None => unreachable!(),
+                }
+            },
+            "return" => {
+                match FunctionControl::from_str(&string) {
+                    Some(keyword) => self.push_token_with_location(TokenKind::FunctionControl(keyword), self.row, start_col),
+                    None => unreachable!(),
+                }
+            },
+            "break" | "continue" => {
+                match LoopControl::from_str(&string) {
+                    Some(keyword) => self.push_token_with_location(TokenKind::LoopControl(keyword), self.row, start_col),
+                    None => unreachable!(),
+                }
+            }
             _ => self.push_token_with_location(TokenKind::Identifier(string), self.row, start_col),
         }
 
@@ -293,6 +350,17 @@ impl<'a> Lexer<'a> {
             _ => {
                 self.col += 1;
             },
+        }
+    }
+
+    fn peek_char(&mut self) -> Result<char, String> {
+        match self.chars.peek() {
+            Some(c) => Ok(c.clone()),
+            None => Err(ErrorMessage::global().get_error_message_with_location(
+                &ErrorCode::Lex004,
+                self.row, self.col,
+                &[],
+            )?)
         }
     }
 }

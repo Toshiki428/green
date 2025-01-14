@@ -1,6 +1,7 @@
 use crate::common::{
     operator::*,
-    types::{BlockType, LiteralValue, Type},
+    keyword::TypeName,
+    types::{BlockType, LiteralValue},
 };
 
 #[derive(Debug, PartialEq, Clone)]
@@ -23,7 +24,8 @@ pub enum Node {
     /// 変数宣言
     VariableDeclaration {
         name: String,
-        variable_type: Type,
+        variable_type: TypeName,
+        initializer: Option<Box<Node>>,
     },
     /// 変数代入
     VariableAssignment {
@@ -105,8 +107,13 @@ impl Node {
                     argument.print(depth+2);
                 }
             },
-            Self::VariableDeclaration { name, variable_type } => {
+            Self::VariableDeclaration { name, variable_type, initializer } => {
                 println!("VariableDeaclaration: {} ({})", name, variable_type.to_string());
+                if let Some(expression) = initializer {
+                    self.indent(depth+1);
+                    println!("initializer:");
+                    expression.print(depth+2);
+                }
             },
             Self::VariableAssignment { name, expression } => {
                 println!("VariableAssignment: {}", name);

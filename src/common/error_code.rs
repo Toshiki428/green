@@ -13,7 +13,7 @@ pub enum ErrorCode {
     Lex002,
     /// 文字列終端
     Lex003,
-    /// コメント終端
+    /// 想定外の終了
     Lex004,
     /// 未定義の演算子
     Lex005,
@@ -28,6 +28,8 @@ pub enum ErrorCode {
     Parse004,
     /// 特定のトークン不足
     Parse005,
+    /// 特定ブロック内でのみ使えるキーワード
+    Parse006,
     
     Runtime001,
     Runtime002,
@@ -65,6 +67,7 @@ impl ErrorCode {
             Self::Parse003 => "PARSE003",
             Self::Parse004 => "PARSE004",
             Self::Parse005 => "PARSE005",
+            Self::Parse006 => "PARSE006",
             Self::Runtime001 => "RUNTIME001",
             Self::Runtime002 => "RUNTIME002",
             Self::Runtime003 => "RUNTIME003",

@@ -1,11 +1,9 @@
 use std::{iter::Peekable, vec::IntoIter};
 use crate::{
-    lexer::{
-        keyword::{BoolKeyword, Keyword},
-        token::{Token, TokenKind},
-    },
+    lexer::token::{Token, TokenKind},
     parser::node::Node,
     common::{
+        keyword::*,
         operator::*,
         types::{BlockType, LiteralValue},
         error_code::ErrorCode,
@@ -15,18 +13,23 @@ use crate::{
 
 struct Parser {
     tokens: Peekable<IntoIter<Token>>,
+    block_stack: Vec<BlockType>,
 }
 
 impl Parser {
     fn new(tokens: Vec<Token>) -> Self {
         Self{
             tokens: tokens.into_iter().peekable(),
+            block_stack: Vec::new(),
         }
     }
 
     /// ルートの構文解析
     fn parse_program(&mut self) -> Result<Node, String> {
-        self.parse_statements(BlockType::Global)
+        self.block_stack.push(BlockType::Global);
+        let statements = self.parse_statements(BlockType::Global);
+        self.block_stack.pop();
+        statements
     }
 
     fn parse_statements(&mut self, block_type: BlockType) -> Result<Node, String> {
@@ -41,125 +44,147 @@ impl Parser {
                     break;
                 }
             }
-            match &token.kind {
-                TokenKind::Identifier(name) => {
-                    let name = name.clone();
-                    self.tokens.next();
-                    let token = self.next_token()?;
-                    match token.kind {
-                        TokenKind::LParen => {
-                            let arguments = self.parse_argument()?;
-                    
-                            self.check_next_token(TokenKind::RParen)?;
-                            self.check_next_token(TokenKind::Semicolon)?;
-                            
-                            children.push(Node::FunctionCall {
-                                name,
-                                arguments,
-                            });
-                        },
-                        TokenKind::Equal => {
-                            let expression = self.parse_expression()?;
-                    
-                            self.check_next_token(TokenKind::Semicolon)?;
-                    
-                            children.push(Node::VariableAssignment {
-                                name,
-                                expression: Box::new(expression),
-                            })
-                        },
-                        _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                            &ErrorCode::Parse002,
-                            token.row, token.col,
-                            &[("token", &token.kind.to_string())],
-                        )?),
-                    }
-                },
-                TokenKind::Keyword(keyword) => {
-                    match keyword {
-                        Keyword::Let => {
-                            self.tokens.next();
-                            let name_token = self.next_token()?;
-                            let name = match name_token.kind {
-                                TokenKind::Identifier(name) => name,
-                                _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                                    &ErrorCode::Parse005,
-                                    name_token.row, name_token.col,
-                                    &[("token", "変数名")],
-                                )?),
-                            };
-                            self.check_next_token(TokenKind::Colon)?;
-                            let type_token = self.next_token()?;
-                            let variable_type = match type_token.kind {
-                                TokenKind::VariableType(variable_type) => variable_type,
-                                _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                                    &ErrorCode::Parse005,
-                                    name_token.row, name_token.col,
-                                    &[("token", "型")],
-                                )?),
-                            };
-                            children.push(Node::VariableDeclaration {
-                                name: name.to_string(),
-                                variable_type,
-                            });
-                            let next_token = self.next_token()?;
-                            if next_token.kind == TokenKind::Semicolon {
-                            } else if next_token.kind == TokenKind::Equal {
-                                let expression = self.parse_assignable()?;
-                                self.check_next_token(TokenKind::Semicolon)?;
-                                children.push(Node::VariableAssignment {
-                                    name,
-                                    expression: Box::new(expression),
-                                });
-                            } else {
-                                return Err(ErrorMessage::global().get_error_message_with_location(
-                                    &ErrorCode::Parse005,
-                                    next_token.row, next_token.col,
-                                    &[("token", ";")]
-                                )?);
-                            }
-                        },
-                        Keyword::If => children.push(self.parse_if_statement()?),
-                        Keyword::While => children.push(self.parse_loop_statement()?),
-                        Keyword::Function => children.push(self.parse_function_definition()?),
-                        Keyword::Return => {
-                            if block_type == BlockType::Function {
-                                self.tokens.next();
-                                let return_value = self.parse_assignable()?;
-                                self.check_next_token(TokenKind::Semicolon)?;
-                                children.push(Node::ReturnStatement { assignalbe: Box::new(return_value) });
-                            }
-                            else {
-                                return Err(ErrorMessage::global().get_error_message_with_location(
-                                    &ErrorCode::Parse002,
-                                    token.row, token.col,
-                                    &[("token", &keyword.to_string())],
-                                )?);
-                            }
-                        },
-                        _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                            &ErrorCode::Parse002,
-                            token.row, token.col,
-                            &[("token", &keyword.to_string())],
-                        )?),
-                    }
-                }
-                TokenKind::EOF => {
-                    self.tokens.next();
-                    break;
-                },
-                _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                    &ErrorCode::Parse002,
-                    token.row, token.col,
-                    &[("token", &token.kind.to_string())],
-                )?),
+            if matches!(&token.kind, TokenKind::EOF) {
+                self.tokens.next();
+                break;
             }
+            let token = token.clone();
+            let statement = self.parse_statement(token)?;
+            children.push(statement);
         }
 
         Ok(Node::Block {
             block_type,
             statements: children,
         })
+    }
+
+    fn parse_statement(&mut self, token: Token) -> Result<Node, String> {
+        match token.kind {
+            TokenKind::Identifier(name) => {
+                let name = name.clone();
+                self.tokens.next();
+                let token = self.next_token()?;
+                match token.kind {
+                    TokenKind::LParen => {  // 関数と判定
+                        let arguments = self.parse_argument()?;
+                
+                        self.check_next_token(TokenKind::RParen)?;
+                        self.check_next_token(TokenKind::Semicolon)?;
+                        
+                        return Ok(Node::FunctionCall {
+                            name,
+                            arguments,
+                        });
+                    },
+                    TokenKind::Equal => {  // 変数と判定
+                        let expression = self.parse_expression()?;
+                
+                        self.check_next_token(TokenKind::Semicolon)?;
+                
+                        return Ok(Node::VariableAssignment {
+                            name,
+                            expression: Box::new(expression),
+                        })
+                    },
+                    _ => {
+                        return Err(ErrorMessage::global().get_error_message_with_location(
+                            &ErrorCode::Parse002,
+                            token.row, token.col,
+                            &[("token", &token.kind.to_string())],
+                        )?)
+                    },
+                }
+            },
+            TokenKind::ControlKeyword(keyword) => {
+                match keyword {
+
+                    ControlKeyword::If => self.parse_if_statement(),
+                    ControlKeyword::While => self.parse_loop_statement(),
+                    
+                    _ => return Err(ErrorMessage::global().get_error_message_with_location(
+                        &ErrorCode::Parse002,
+                        token.row, token.col,
+                        &[("token", &keyword.to_string())],
+                    )?),
+                }
+            },
+            TokenKind::DeclarationKeyword(keyword) => {
+                match keyword {
+                    DeclarationKeyword::Let => {
+                        self.tokens.next();
+                        let name_token = self.next_token()?;
+                        let name = match name_token.kind {
+                            TokenKind::Identifier(name) => name,
+                            _ => return Err(ErrorMessage::global().get_error_message_with_location(
+                                &ErrorCode::Parse005,
+                                name_token.row, name_token.col,
+                                &[("token", "変数名")],
+                            )?),
+                        };
+                        self.check_next_token(TokenKind::Colon)?;
+                        let type_token = self.next_token()?;
+                        let variable_type = match type_token.kind {
+                            TokenKind::TypeName(type_name) => type_name,
+                            _ => return Err(ErrorMessage::global().get_error_message_with_location(
+                                &ErrorCode::Parse005,
+                                name_token.row, name_token.col,
+                                &[("token", "型")],
+                            )?),
+                        };
+                        let next_token = self.next_token()?;
+                        let initializer = match next_token.kind {
+                            TokenKind::Semicolon => None,
+                            TokenKind::Equal => {
+                                let expression = self.parse_assignable()?;
+                                self.check_next_token(TokenKind::Semicolon)?;
+                                Some(Box::new(expression))
+                            },
+                            _ =>{
+                                return Err(ErrorMessage::global().get_error_message_with_location(
+                                    &ErrorCode::Parse005,
+                                    next_token.row, next_token.col,
+                                    &[("token", ";")]
+                                )?);
+                            }
+                        };
+                        return Ok(Node::VariableDeclaration {
+                            name: name.to_string(),
+                            variable_type,
+                            initializer,
+                        });
+                    },
+                    DeclarationKeyword::Function => self.parse_function_definition(),
+                }
+            },
+            TokenKind::FunctionControl(keyword) => {
+                match keyword {
+                    FunctionControl::Return => {
+                        if !self.block_stack.contains(&BlockType::Function) {
+                            return Err(ErrorMessage::global().get_error_message_with_location(
+                                &ErrorCode::Parse006,
+                                token.row, token.col,
+                                &[
+                                    ("statement", &keyword.to_string()),
+                                    ("block", "function"),
+                                ],
+                            )?)
+                        }
+                        self.tokens.next();
+                        let return_value = self.parse_assignable()?;
+                        self.check_next_token(TokenKind::Semicolon)?;
+                        Ok(Node::ReturnStatement {
+                            assignalbe: Box::new(return_value)
+                        })
+                    },
+                }
+            },
+            _ => return Err(ErrorMessage::global().get_error_message_with_location(
+                &ErrorCode::Parse002,
+                token.row, token.col,
+                &[("token", &token.kind.to_string())],
+            )?),
+        }
     }
 
     fn parse_if_statement(&mut self) -> Result<Node, String> {
@@ -172,16 +197,20 @@ impl Parser {
         self.check_next_token(TokenKind::RParen)?;
         self.check_next_token(TokenKind::LBrace)?;
 
+        self.block_stack.push(BlockType::Conditional);
         let then_block = self.parse_statements(BlockType::Conditional)?;
+        self.block_stack.pop();
 
         self.check_next_token(TokenKind::RBrace)?;
 
         let else_block = match self.tokens.peek() {
-            Some(token) if token.kind == TokenKind::Keyword(Keyword::Else) => {
+            Some(token) if token.kind == TokenKind::ControlKeyword(ControlKeyword::Else) => {
                 self.tokens.next();
                 self.check_next_token(TokenKind::LBrace)?;
         
+                self.block_stack.push(BlockType::Conditional);
                 let else_block = self.parse_statements(BlockType::Conditional)?;
+                self.block_stack.pop();
         
                 self.check_next_token(TokenKind::RBrace)?;
 
@@ -206,7 +235,9 @@ impl Parser {
         self.check_next_token(TokenKind::RParen)?;
         self.check_next_token(TokenKind::LBrace)?;
 
+        self.block_stack.push(BlockType::Loop);
         let block = self.parse_statements(BlockType::Loop)?;
+        self.block_stack.pop();
 
         self.check_next_token(TokenKind::RBrace)?;
         Ok(Node::LoopStatement {
@@ -216,7 +247,18 @@ impl Parser {
     }
 
     fn parse_function_definition(&mut self) -> Result<Node, String> {
-        self.tokens.next();
+        let token = self.next_token()?;
+        if self.block_stack.last() != Some(&BlockType::Global) {
+            return Err(ErrorMessage::global().get_error_message_with_location(
+                &ErrorCode::Parse006,
+                token.row, token.col,
+                &[
+                    ("statement", "function"),
+                    ("block", "global_block"),
+                ],
+            )?)
+        }
+        
         let token = self.next_token()?;
         let function_name = match token.kind {
             TokenKind::Identifier(name) => name,
@@ -248,7 +290,7 @@ impl Parser {
             
             let type_token = self.next_token()?;
             let variable_type = match type_token.kind {
-                TokenKind::VariableType(variable_type) => variable_type,
+                TokenKind::TypeName(type_name) => type_name,
                 _ => return Err(ErrorMessage::global().get_error_message_with_location(
                     &ErrorCode::Parse002,
                     type_token.row, type_token.col,
@@ -258,6 +300,7 @@ impl Parser {
             let param = Node::VariableDeclaration {
                 name,
                 variable_type,
+                initializer: None,
             };
             parameters.push(param);
             
@@ -276,7 +319,10 @@ impl Parser {
         self.check_next_token(TokenKind::RParen)?;
         self.check_next_token(TokenKind::LBrace)?;
         
+        self.block_stack.push(BlockType::Function);
         let block = self.parse_statements(BlockType::Function)?;
+        self.block_stack.pop();
+
         self.check_next_token(TokenKind::RBrace)?;
 
         Ok(Node::FunctionDefinition {
@@ -314,7 +360,7 @@ impl Parser {
         let token = self.peek_token()?;
         match token.kind.clone() {
             TokenKind::StringLiteral(_) | TokenKind::NumberLiteral(_) | TokenKind::BoolLiteral(_) 
-            | TokenKind::ArithmeticOperator(Arithmetic::Unary(_)) | TokenKind::LParen => {
+            | TokenKind::ArithmeticOperator(Arithmetic::Plus|Arithmetic::Minus) | TokenKind::LParen => {
                 return self.parse_expression();
             },
             TokenKind::Identifier(name) => {
@@ -430,7 +476,7 @@ impl Parser {
     fn parse_value(&mut self) -> Result<Node, String> {
         let token = self.peek_token()?;
         match token.kind {
-            TokenKind::NumberLiteral(_) | TokenKind::ArithmeticOperator(Arithmetic::Unary(_))
+            TokenKind::NumberLiteral(_) | TokenKind::ArithmeticOperator(Arithmetic::Plus|Arithmetic::Minus)
             | TokenKind::LParen | TokenKind::Identifier(_) => {
                 return self.parse_add_and_sub()
             },
@@ -446,15 +492,14 @@ impl Parser {
     /// 足し算、引き算の構文解析
     fn parse_add_and_sub(&mut self) -> Result<Node, String> {
         let mut left = self.parse_mul_and_div()?;
-        while let Some(TokenKind::ArithmeticOperator(Arithmetic::Unary(operator))) = self.tokens.peek().map(|t| &t.kind) {
-            let operator = match operator {
-                UnaryArithmetic::Plus => BinaryArithmetic::Add,
-                UnaryArithmetic::Minus => BinaryArithmetic::Subtract,
+        while let Some(TokenKind::ArithmeticOperator(Arithmetic::Plus|Arithmetic::Minus)) = self.tokens.peek().map(|t| &t.kind) {
+            let operator = match self.next_token()?.kind {
+                TokenKind::ArithmeticOperator(op) => op,
+                _ => unreachable!(),
             };
-            self.tokens.next();
             let right = self.parse_mul_and_div()?;
             left = Node::Arithmetic {
-                operator: Arithmetic::Binary(operator),
+                operator: operator,
                 left: Box::new(left),
                 right: Some(Box::new(right)),
             };
@@ -465,12 +510,15 @@ impl Parser {
     /// 掛け算、割り算の構文解析
     fn parse_mul_and_div(&mut self) -> Result<Node, String> {
         let mut left = self.parse_unary()?;
-        while let Some(TokenKind::ArithmeticOperator(Arithmetic::Binary(operator))) = self.tokens.peek().map(|t| &t.kind) {
-            let operator = operator.clone();
+        while let Some(TokenKind::ArithmeticOperator(Arithmetic::Multiply|Arithmetic::Divide)) = self.tokens.peek().map(|t| &t.kind) {
+            let operator = match self.next_token()?.kind {
+                TokenKind::ArithmeticOperator(op) => op,
+                _ => unreachable!(),
+            };
             self.tokens.next();
             let right = self.parse_unary()?;
             left = Node::Arithmetic {
-                operator: Arithmetic::Binary(operator),
+                operator: operator,
                 left: Box::new(left),
                 right: Some(Box::new(right)),
             };
@@ -483,14 +531,14 @@ impl Parser {
         let token = self.peek_token()?;
         match token.kind {
             TokenKind::NumberLiteral(_) | TokenKind::LParen | TokenKind::Identifier(_)
-            | TokenKind::ArithmeticOperator(Arithmetic::Unary(UnaryArithmetic::Plus))=> {
+            | TokenKind::ArithmeticOperator(Arithmetic::Plus)=> {
                 return self.parse_primary()
             },
-            TokenKind::ArithmeticOperator(Arithmetic::Unary(UnaryArithmetic::Minus)) => {
+            TokenKind::ArithmeticOperator(Arithmetic::Minus) => {
                 self.tokens.next();
                 let number = self.parse_primary()?;
                 Ok(Node::Arithmetic {
-                    operator: Arithmetic::Unary(UnaryArithmetic::Minus),
+                    operator: Arithmetic::Minus,
                     left: Box::new(number),
                     right: None,
                 })

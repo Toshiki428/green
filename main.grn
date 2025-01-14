@@ -4,15 +4,21 @@ while (i < 10) {
     i = i+1;
 }
 
-function test(a: int) {
+function test(a: int, b:int) {
     let i: int = 0;
     let sum: int = 0;
     while (i < a) {
         sum = sum + i;
         i = i + 1;
+        if (b > 0 and i == 10) {
+            return sum;
+        }
     }
     return sum;
 }
 
-let a: int = test(15);
+let a: int = test(15, 0);
 print(a);
+
+let b: int = test(15, 1);
+print(b);

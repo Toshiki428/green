@@ -2,13 +2,14 @@ use std::collections::HashMap;
 
 use crate::{
     common::{
-        operator::{ Arithmetic, BinaryArithmetic, BinaryLogical, Comparison, Logical, UnaryArithmetic, UnaryLogical},
-        types::{GreenValue, LiteralValue, Type},
         error_code::ErrorCode,
+        keyword::TypeName,
+        operator::{ Arithmetic, BinaryLogical, Comparison, Logical, UnaryLogical},
+        types::{GreenValue, LiteralValue, Type},
     },
-    utils::error_message::ErrorMessage,
-    parser::node::Node,
     interpreter::environment::Environment,
+    parser::node::Node,
+    utils::error_message::ErrorMessage,
 };
 
 struct Interpreter {
@@ -48,10 +49,21 @@ impl Interpreter {
             Node::FunctionCall { name: _, arguments: _ } => {
                 self.execute_function(node)?;
             },
-            Node::VariableDeclaration { name, variable_type } => {
+            Node::VariableDeclaration { name, variable_type, initializer } => {
+                let value_type = match variable_type {
+                    TypeName::Bool => Type::Bool,
+                    TypeName::Float => Type::Float,
+                    TypeName::Int => Type::Int,
+                    TypeName::String => Type::String,
+                };
+                let value = match initializer {
+                    Some(expression) => self.evaluate_assignable(expression)?.value,
+                    None => LiteralValue::Null,
+                };
+
                 let value = GreenValue {
-                    value_type: variable_type.clone(),
-                    value: LiteralValue::Null,
+                    value_type,
+                    value,
                 };
                 self.variables.set_variable(name, &value);
             },
@@ -60,17 +72,23 @@ impl Interpreter {
                 self.variables.change_variable(name.to_string(), value)?;
             },
             Node::IfStatement { condition_node, then_block, else_block } => {
-                self.evaluate_if_statement(condition_node, then_block, else_block)?;
+                let result = self.evaluate_if_statement(condition_node, then_block, else_block)?;
+                if result.is_some() {
+                    return Ok(result)
+                }
             },
             Node::LoopStatement { condition_node, block } => {
-                self.evaluate_loop_statement(condition_node, block)?;
+                let result = self.evaluate_loop_statement(condition_node, block)?;
+                if result.is_some() {
+                    return Ok(result)
+                }
             },
             Node::FunctionDefinition { name, parameters, block } => {
                 let mut variables = Vec::new();
                 for param in parameters {
                     match param {
-                        Node::VariableDeclaration { name, variable_type } => {
-                            variables.push((name.to_string(), variable_type.clone()));
+                        Node::VariableDeclaration { name, variable_type, initializer:_ } => {
+                            variables.push((name.to_string(), Type::from_keyword(variable_type)));
                         },
                         _ => return Err(ErrorMessage::global().get_error_message(
                             &ErrorCode::Runtime011,
@@ -162,14 +180,20 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_if_statement(&mut self, condition_node: &Node, then_block: &Node, else_block: &Option<Box<Node>>) -> Result<(), String> {
+    fn evaluate_if_statement(&mut self, condition_node: &Node, then_block: &Node, else_block: &Option<Box<Node>>) -> Result<Option<GreenValue>, String> {
         if let LiteralValue::Bool(condition_result) = self.evaluate_assignable(&condition_node)?.value {
-            if condition_result {
-                self.execute(then_block)?;
-            } else {
-                if let Some(else_node) = else_block {
-                    self.execute(else_node)?;
+            let result = match condition_result {
+                true => self.execute(then_block)?,
+                false => {
+                    if let Some(else_node) = else_block {
+                        self.execute(else_node)?
+                    } else {
+                        None
+                    }
                 }
+            };
+            if result.is_some() {
+                return Ok(result)
             }
         } else {
             return Err(ErrorMessage::global().get_error_message(
@@ -177,25 +201,28 @@ impl Interpreter {
                 &[("node", &format!("{:?}",condition_node))],
             )?)
         }
-        Ok(())
+        Ok(None)
     }
 
-    fn evaluate_loop_statement(&mut self, condition_node: &Node, block: &Node) -> Result<(), String> {
-        if let LiteralValue::Bool(_) = self.evaluate_assignable(&condition_node)?.value {
-            while let LiteralValue::Bool(condition_result) = self.evaluate_assignable(&condition_node)?.value {
-                if condition_result {
-                    self.execute(block)?;
-                } else {
-                    break
-                }
+    fn evaluate_loop_statement(&mut self, condition_node: &Node, block: &Node) -> Result<Option<GreenValue>, String> {
+        loop {
+            let condition_value = self.evaluate_assignable(&condition_node)?;
+
+            match condition_value.value {
+                LiteralValue::Bool(true) => {
+                    let result = self.execute(block)?;
+                    if result.is_some() {
+                        return Ok(result)
+                    }
+                },
+                LiteralValue::Bool(false) => break,
+                _ => return Err(ErrorMessage::global().get_error_message(
+                    &ErrorCode::Runtime014,
+                    &[("node", &format!("{:?}",condition_node))],
+                )?)
             }
-        } else {
-            return Err(ErrorMessage::global().get_error_message(
-                &ErrorCode::Runtime014,
-                &[("node", &format!("{:?}",condition_node))],
-            )?)
         }
-        Ok(())
+        Ok(None)
     }
 
     /// 引数の評価
@@ -336,86 +363,87 @@ impl Interpreter {
             },
             // 四則演算
             Node::Arithmetic {
-                operator: Arithmetic::Binary(binary_operator),
+                operator,
                 left,
                 right
             } => {
-                let right = if let Some(right_node) = right {
-                    right_node
-                } else {
-                    return Err(ErrorMessage::global().get_error_message(
-                        &ErrorCode::Runtime009, &[]
-                    )?);
-                };
-                let left_literal = self.evaluate_expression(left)?;
-                let right_literal = self.evaluate_expression(right)?;
-                match (&left_literal, &right_literal) {
-                    (LiteralValue::Int(left_value), LiteralValue::Int(right_value)) => {
-                        match binary_operator {
-                            BinaryArithmetic::Add => Ok(LiteralValue::Int(left_value + right_value)),
-                            BinaryArithmetic::Subtract => Ok(LiteralValue::Int(left_value - right_value)),
-                            BinaryArithmetic::Multiply => Ok(LiteralValue::Int(left_value * right_value)),
-                            BinaryArithmetic::Divide => Ok(LiteralValue::Int(left_value / right_value)),
+                match right {
+                    Some(right) => {
+                        let left_literal = self.evaluate_expression(left)?;
+                        let right_literal = self.evaluate_expression(right)?;
+                        match (&left_literal, &right_literal) {
+                            (LiteralValue::Int(left_value), LiteralValue::Int(right_value)) => {
+                                match operator {
+                                    Arithmetic::Plus => Ok(LiteralValue::Int(left_value + right_value)),
+                                    Arithmetic::Minus => Ok(LiteralValue::Int(left_value - right_value)),
+                                    Arithmetic::Multiply => Ok(LiteralValue::Int(left_value * right_value)),
+                                    Arithmetic::Divide => Ok(LiteralValue::Int(left_value / right_value)),
+                                }
+                            },
+                            (LiteralValue::Int(_), LiteralValue::Float(_)) |
+                            (LiteralValue::Float(_), LiteralValue::Int(_)) |
+                            (LiteralValue::Float(_), LiteralValue::Float(_)) => {
+                                let left_value = match left_literal {
+                                    LiteralValue::Float(value) => value,
+                                    LiteralValue::Int(value) => value as f64,
+                                    _ => unreachable!(),
+                                };
+                                let right_value = match right_literal {
+                                    LiteralValue::Float(value) => value,
+                                    LiteralValue::Int(value) => value as f64,
+                                    _ => unreachable!(),
+                                };
+                                match operator {
+                                    Arithmetic::Plus => Ok(LiteralValue::Float(left_value + right_value)),
+                                    Arithmetic::Minus => Ok(LiteralValue::Float(left_value - right_value)),
+                                    Arithmetic::Multiply => Ok(LiteralValue::Float(left_value * right_value)),
+                                    Arithmetic::Divide => Ok(LiteralValue::Float(left_value / right_value)),
+                                }
+                            },
+                            _ => Err(ErrorMessage::global().get_error_message(
+                                &ErrorCode::Runtime015,
+                                &[
+                                    ("left", &left_literal.to_string()),
+                                    ("operator", &operator.to_string()),
+                                    ("right", &right_literal.to_string()),
+                                ],
+                            )?)
                         }
                     },
-                    (LiteralValue::Int(_), LiteralValue::Float(_)) |
-                    (LiteralValue::Float(_), LiteralValue::Int(_)) |
-                    (LiteralValue::Float(_), LiteralValue::Float(_)) => {
-                        let left_value = match left_literal {
-                            LiteralValue::Float(value) => value,
-                            LiteralValue::Int(value) => value as f64,
-                            _ => unreachable!(),
-                        };
-                        let right_value = match right_literal {
-                            LiteralValue::Float(value) => value,
-                            LiteralValue::Int(value) => value as f64,
-                            _ => unreachable!(),
-                        };
-                        match binary_operator {
-                            BinaryArithmetic::Add => Ok(LiteralValue::Float(left_value + right_value)),
-                            BinaryArithmetic::Subtract => Ok(LiteralValue::Float(left_value - right_value)),
-                            BinaryArithmetic::Multiply => Ok(LiteralValue::Float(left_value * right_value)),
-                            BinaryArithmetic::Divide => Ok(LiteralValue::Float(left_value / right_value)),
+                    None => {
+                        match operator {
+                            Arithmetic::Plus | Arithmetic::Minus => {
+                                match self.evaluate_expression(left)? {
+                                    LiteralValue::Float(value) => {
+                                        let mut result = value;
+                                        if *operator == Arithmetic::Minus {
+                                            result = -1.0 * value;
+                                        }
+                                        Ok(LiteralValue::Float(result))
+                                    },
+                                    LiteralValue::Int(value) => {
+                                        let mut result = value;
+                                        if *operator == Arithmetic::Minus {
+                                            result = -1 * value;
+                                        }
+                                        Ok(LiteralValue::Int(result))
+                                    },
+                                    _ => Err(ErrorMessage::global().get_error_message(
+                                        &ErrorCode::Runtime008,
+                                        &[
+                                            ("operator", &operator.to_string()),
+                                            ("node", &format!("{:?}", left)),
+                                        ],
+                                    )?),
+                                }
+                            },
+                            _ => {
+                                return Err(ErrorMessage::global().get_error_message(
+                                    &ErrorCode::Runtime009, &[]
+                                )?);
+                            }
                         }
                     },
-                    _ => Err(ErrorMessage::global().get_error_message(
-                        &ErrorCode::Runtime015,
-                        &[
-                            ("left", &left_literal.to_string()),
-                            ("operator", &format!("{:?}", binary_operator)),
-                            ("right", &right_literal.to_string()),
-                        ],
-                    )?)
-                }
-            },
-
-            Node::Arithmetic {
-                operator: Arithmetic::Unary(unary_operator),
-                left,
-                right: _,
-            } => {
-                match self.evaluate_expression(left)? {
-                    LiteralValue::Float(value) => {
-                        let mut result = value;
-                        if *unary_operator == UnaryArithmetic::Minus {
-                            result = -1.0 * value;
-                        }
-                        Ok(LiteralValue::Float(result))
-                    },
-                    LiteralValue::Int(value) => {
-                        let mut result = value;
-                        if *unary_operator == UnaryArithmetic::Minus {
-                            result = -1 * value;
-                        }
-                        Ok(LiteralValue::Int(result))
-                    },
-                    _ => Err(ErrorMessage::global().get_error_message(
-                        &ErrorCode::Runtime008,
-                        &[
-                            ("operator", &format!("{:?}", unary_operator)),
-                            ("node", &format!("{:?}", left)),
-                        ],
-                    )?),
                 }
             },
             Node::Variable { name } => {

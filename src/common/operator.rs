@@ -1,52 +1,19 @@
+/// 論理演算
 #[derive(Debug, Clone, PartialEq)]
 pub enum Logical {
     Unary(UnaryLogical),
     Binary(BinaryLogical),
 }
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum UnaryLogical {
-    Not,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum BinaryLogical {
-    Or,
-    And,
-    Xor,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Arithmetic {
-    Unary(UnaryArithmetic),
-    Binary(BinaryArithmetic),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum UnaryArithmetic {
-    Plus, // 正号
-    Minus, // 負号
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum BinaryArithmetic {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Comparison {
-    Equal,         // ==
-    NotEqual,      // !=
-    Greater,       // >
-    Less,          // <
-    GreaterEqual,  // >=
-    LessEqual,     // <=
-}
-
 impl Logical {
+    pub fn from_str(str: &str) -> Option<Self> {
+        match str {
+            "and" => Some(Self::Binary(BinaryLogical::And)),
+            "or" => Some(Self::Binary(BinaryLogical::Or)),
+            "xor" => Some(Self::Binary(BinaryLogical::Xor)),
+            "not" => Some(Self::Unary(UnaryLogical::Not)),
+            _ => None,
+        }
+    }
     pub fn to_string(&self) -> String {
         let operator = match self {
             Self::Binary(binary_logical) => {
@@ -66,29 +33,68 @@ impl Logical {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnaryLogical {
+    Not,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub enum BinaryLogical {
+    Or,
+    And,
+    Xor,
+}
+
+/// 四則演算
+#[derive(Debug, Clone, PartialEq)]
+pub enum Arithmetic {
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
+}
 impl Arithmetic {
+    pub fn from_str(str: &str) -> Option<Self> {
+        match str {
+            "+" => Some(Self::Plus),
+            "-" => Some(Self::Minus),
+            "*" => Some(Self::Multiply),
+            "/" => Some(Self::Divide),
+            _ => None,
+        }
+    }
     pub fn to_string(&self) -> String {
         let operator = match self {
-            Arithmetic::Binary(binary_arithmetic) => {
-                match binary_arithmetic {
-                    BinaryArithmetic::Add => "+",
-                    BinaryArithmetic::Subtract => "-",
-                    BinaryArithmetic::Multiply => "*",
-                    BinaryArithmetic::Divide => "/",
-                }
-            },
-            Arithmetic::Unary(unary_arithmetic) => {
-                match unary_arithmetic {
-                    UnaryArithmetic::Plus => "+",
-                    UnaryArithmetic::Minus => "-",
-                }
-            },
+            Self::Plus => "+",
+            Self::Minus => "-",
+            Self::Multiply => "*",
+            Self::Divide => "/",
         };
         operator.to_string()
     }
 }
 
+/// 比較演算
+#[derive(Debug, Clone, PartialEq)]
+pub enum Comparison {
+    Equal,         // ==
+    NotEqual,      // !=
+    Greater,       // >
+    Less,          // <
+    GreaterEqual,  // >=
+    LessEqual,     // <=
+}
 impl Comparison {
+    pub fn from_str(str: &str) -> Option<Self> {
+        match str {
+            "==" => Some(Self::Equal),
+            "!=" => Some(Self::NotEqual),
+            ">" => Some(Self::Greater),
+            "<" => Some(Self::Less),
+            ">=" => Some(Self::GreaterEqual),
+            "<=" => Some(Self::LessEqual),
+            _ => None,
+        }
+    }
     pub fn to_string(&self) -> String {
         let operator = match self {
             Self::Equal => "==",

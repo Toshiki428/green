@@ -1,3 +1,5 @@
+use crate::common::keyword::TypeName;
+
 /// Green言語の型
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
@@ -7,6 +9,14 @@ pub enum Type {
     String,
 }
 impl Type {
+    pub fn from_keyword(type_name: &TypeName) -> Self {
+        match type_name {
+            TypeName::Bool => Type::Bool,
+            TypeName::Float => Type::Float,
+            TypeName::Int => Type::Int,
+            TypeName::String => Type::String,
+        }
+    }
     pub fn to_string(&self) -> String {
         match self {
             Self::Int => "int".to_string(),
