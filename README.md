@@ -6,9 +6,11 @@
 <statements> ::= <statement> | <statements> <statement>
 <statement> ::= <function_call> | <variable_declaration> | <if_statement> | <function_definition> | <while_statement>
 <if_statement> ::= "if" "(" <assignable> ")" <block> [ "else" <block> ]
-<function_definition> = "function" <function_name> "(" ((<variable> ":" <type> "," )* <variable> ":" <type>)? ")" <block>
-<while_statement> ::= "while" "(" <assignable> ")" <block>
-<block> ::= "{" <statements> ("return" <assignable>)? ";" "}"
+<function_definition> = "function" <function_name> "(" ((<variable> ":" <type> "," )* <variable> ":" <type>)? ")" <function_block>
+<while_statement> ::= "while" "(" <assignable> ")" <loop_block>
+<block> ::= "{" <statements> "}"
+<function_block> ::= "{" <statements> ("return" <assignable> ";")* "}"
+<loop_block> ::= "{" <statements> ("continue" ";" | "break" ";")* "}"
 <function_call> ::= <function_name> "(" <argument> ")"
 <argument> ::= <assignable>
 <variable_declaration> ::= "let " <variable> ":" <type> "=" <assignable>

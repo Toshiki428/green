@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use crate::{
     common::{
         error_code::ErrorCode,
-        keyword::TypeName,
         operator::{ Arithmetic, BinaryLogical, Comparison, Logical, UnaryLogical},
         types::{GreenValue, LiteralValue, Type},
     },
@@ -11,6 +10,14 @@ use crate::{
     parser::node::Node,
     utils::error_message::ErrorMessage,
 };
+
+#[derive(Debug)]
+pub enum EvalFlow<T> {
+    Normal,
+    Continue,
+    Break,
+    Return(T),
+}
 
 struct Interpreter {
     variables: Environment,
@@ -26,13 +33,14 @@ impl Interpreter {
     }
 
     /// プログラムの実行
-    fn execute(&mut self, node: &Node) -> Result<Option<GreenValue>, String> {
+    fn execute(&mut self, node: &Node) -> Result<EvalFlow<GreenValue>, String> {
         match &node {
             Node::Block { block_type:_, statements } => {
                 for child in statements {
                     let result = self.statement(child)?;
-                    if result.is_some() {
-                        return Ok(result)
+                    match result {
+                        EvalFlow::Return(_) | EvalFlow::Break | EvalFlow::Continue => return Ok(result),
+                        EvalFlow::Normal => {},
                     }
                 }
             },
@@ -41,21 +49,16 @@ impl Interpreter {
                 &[("node", &format!("{:?}",node))],
             )?),
         }
-        Ok(None)
+        Ok(EvalFlow::Normal)
     }
 
-    fn statement(&mut self, node: &Node) -> Result<Option<GreenValue>, String> {
+    fn statement(&mut self, node: &Node) -> Result<EvalFlow<GreenValue>, String> {
         match &node {
             Node::FunctionCall { name: _, arguments: _ } => {
                 self.execute_function(node)?;
             },
             Node::VariableDeclaration { name, variable_type, initializer } => {
-                let value_type = match variable_type {
-                    TypeName::Bool => Type::Bool,
-                    TypeName::Float => Type::Float,
-                    TypeName::Int => Type::Int,
-                    TypeName::String => Type::String,
-                };
+                let value_type = Type::from_keyword(variable_type);
                 let value = match initializer {
                     Some(expression) => self.evaluate_assignable(expression)?.value,
                     None => LiteralValue::Null,
@@ -72,16 +75,10 @@ impl Interpreter {
                 self.variables.change_variable(name.to_string(), value)?;
             },
             Node::IfStatement { condition_node, then_block, else_block } => {
-                let result = self.evaluate_if_statement(condition_node, then_block, else_block)?;
-                if result.is_some() {
-                    return Ok(result)
-                }
+                return self.evaluate_if_statement(condition_node, then_block, else_block);
             },
             Node::LoopStatement { condition_node, block } => {
-                let result = self.evaluate_loop_statement(condition_node, block)?;
-                if result.is_some() {
-                    return Ok(result)
-                }
+                return self.evaluate_loop_statement(condition_node, block);
             },
             Node::FunctionDefinition { name, parameters, block } => {
                 let mut variables = Vec::new();
@@ -100,14 +97,20 @@ impl Interpreter {
             },
             Node::ReturnStatement { assignalbe } => {
                 let return_value = self.evaluate_assignable(assignalbe)?;
-                return Ok(Some(return_value));
+                return Ok(EvalFlow::Return(return_value));
             },
+            Node::Break => {
+                return Ok(EvalFlow::Break);
+            },
+            Node::Continue => {
+                return Ok(EvalFlow::Continue);
+            }
             _ => return Err(ErrorMessage::global().get_error_message(
                 &ErrorCode::Runtime003,
                 &[("node", &format!("{:?}", node))],
             )?),
         }
-        Ok(None)
+        Ok(EvalFlow::Normal)
     }
 
     /// print関数の実行
@@ -157,9 +160,18 @@ impl Interpreter {
                             }
 
                             let result = self.execute(&function_node)?;
-                            if result.is_some() {
-                                self.variables.pop_scope();
-                                return Ok(result);
+                            match result {
+                                EvalFlow::Return(value) => {
+                                    self.variables.pop_scope();
+                                    return Ok(Some(value))
+                                },
+                                EvalFlow::Normal => {},
+                                _ => {
+                                    return Err(ErrorMessage::global().get_error_message(
+                                        &ErrorCode::Runtime018,
+                                        &[("node", &format!("{:?}", result))]
+                                    )?)
+                                }
                             }
                         } else {
                             return Err(ErrorMessage::global().get_error_message(
@@ -180,20 +192,15 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_if_statement(&mut self, condition_node: &Node, then_block: &Node, else_block: &Option<Box<Node>>) -> Result<Option<GreenValue>, String> {
+    fn evaluate_if_statement(&mut self, condition_node: &Node, then_block: &Node, else_block: &Option<Box<Node>>) -> Result<EvalFlow<GreenValue>, String> {
         if let LiteralValue::Bool(condition_result) = self.evaluate_assignable(&condition_node)?.value {
-            let result = match condition_result {
-                true => self.execute(then_block)?,
+            match condition_result {
+                true => return self.execute(then_block),
                 false => {
                     if let Some(else_node) = else_block {
-                        self.execute(else_node)?
-                    } else {
-                        None
+                        return self.execute(else_node)
                     }
                 }
-            };
-            if result.is_some() {
-                return Ok(result)
             }
         } else {
             return Err(ErrorMessage::global().get_error_message(
@@ -201,18 +208,21 @@ impl Interpreter {
                 &[("node", &format!("{:?}",condition_node))],
             )?)
         }
-        Ok(None)
+        Ok(EvalFlow::Normal)
     }
 
-    fn evaluate_loop_statement(&mut self, condition_node: &Node, block: &Node) -> Result<Option<GreenValue>, String> {
+    fn evaluate_loop_statement(&mut self, condition_node: &Node, block: &Node) -> Result<EvalFlow<GreenValue>, String> {
         loop {
             let condition_value = self.evaluate_assignable(&condition_node)?;
 
             match condition_value.value {
                 LiteralValue::Bool(true) => {
                     let result = self.execute(block)?;
-                    if result.is_some() {
-                        return Ok(result)
+                    match result {
+                        EvalFlow::Break => break,
+                        EvalFlow::Continue => continue,
+                        EvalFlow::Return(_) => return Ok(result),
+                        EvalFlow::Normal => {},
                     }
                 },
                 LiteralValue::Bool(false) => break,
@@ -222,7 +232,7 @@ impl Interpreter {
                 )?)
             }
         }
-        Ok(None)
+        Ok(EvalFlow::Normal)
     }
 
     /// 引数の評価

@@ -30,5 +30,6 @@
     "RUNTIME015": "想定外の演算: 左: {left} 演算子: {operator} 右: {right}",
     "RUNTIME016": "異なる型の比較: 左: {left} 演算子: {operator} 右: {right}",
     "RUNTIME017": "想定外のループ条件: {node}",
+    "RUNTIME018": "想定外のフロー: {node}",
     "ALL": "不明なエラー"
 }

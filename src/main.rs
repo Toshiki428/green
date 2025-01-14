@@ -26,6 +26,7 @@ fn main() -> Result<(), String> {
         }
     };
 
+
     let tokens = match lexical_analyzer::lex(&content) {
         Ok(tokens) => tokens,
         Err(e) => {

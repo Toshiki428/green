@@ -75,9 +75,12 @@ pub enum Node {
         parameters: Vec<Node>,
         block: Box<Node>,
     },
+    /// return文
     ReturnStatement {
         assignalbe: Box<Node>,
     },
+    Break,
+    Continue,
 }
 
 impl Node {
@@ -189,7 +192,9 @@ impl Node {
             Self::ReturnStatement { assignalbe } => {
                 println!("Return:");
                 assignalbe.print(depth+1);
-            }
+            },
+            Self::Break => println!("break"),
+            Self::Continue => println!("continue"),
         }
     }
 

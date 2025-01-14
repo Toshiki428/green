@@ -4,12 +4,12 @@ while (i < 10) {
     i = i+1;
 }
 
-function test(a: int, b:int) {
+function test_return(a: int, b:int) {
     let i: int = 0;
     let sum: int = 0;
     while (i < a) {
-        sum = sum + i;
         i = i + 1;
+        sum = sum + i;
         if (b > 0 and i == 10) {
             return sum;
         }
@@ -17,8 +17,38 @@ function test(a: int, b:int) {
     return sum;
 }
 
-let a: int = test(15, 0);
-print(a);
+print(test_return(15, 0));
+print(test_return(15, 1));
 
-let b: int = test(15, 1);
-print(b);
+function test_break(a: int, b: int) {
+    let i: int = 0;
+    let sum: int = 0;
+    while (i < a) {
+        i = i + 1;
+        sum = sum + i;
+        if (b > 0 and i == 10) {
+            break;
+        }
+    }
+    return sum;
+}
+print(test_break(15, 0));
+print(test_break(15, 1));
+
+function test_continue(a:int, b: int) {
+    let i: int = 0;
+    let sum: int = 0;
+    while (i < a) {
+        i = i + 1;
+        sum = sum + i;
+        if (b > 0) {
+            continue;
+        }
+        sum = sum + i;
+    }
+
+    return sum;
+}
+
+print(test_continue(15, 0));
+print(test_continue(15, 1));

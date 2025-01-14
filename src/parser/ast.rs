@@ -158,18 +158,18 @@ impl Parser {
                 }
             },
             TokenKind::FunctionControl(keyword) => {
+                if !self.block_stack.contains(&BlockType::Function) {
+                    return Err(ErrorMessage::global().get_error_message_with_location(
+                        &ErrorCode::Parse006,
+                        token.row, token.col,
+                        &[
+                            ("statement", &keyword.to_string()),
+                            ("block", "function"),
+                        ],
+                    )?)
+                }
                 match keyword {
                     FunctionControl::Return => {
-                        if !self.block_stack.contains(&BlockType::Function) {
-                            return Err(ErrorMessage::global().get_error_message_with_location(
-                                &ErrorCode::Parse006,
-                                token.row, token.col,
-                                &[
-                                    ("statement", &keyword.to_string()),
-                                    ("block", "function"),
-                                ],
-                            )?)
-                        }
                         self.tokens.next();
                         let return_value = self.parse_assignable()?;
                         self.check_next_token(TokenKind::Semicolon)?;
@@ -178,6 +178,25 @@ impl Parser {
                         })
                     },
                 }
+            },
+            TokenKind::LoopControl(keyword) => {
+                if !self.block_stack.contains(&BlockType::Loop) {
+                    return Err(ErrorMessage::global().get_error_message_with_location(
+                        &ErrorCode::Parse006,
+                        token.row, token.col,
+                        &[
+                            ("statement", &keyword.to_string()),
+                            ("block", "loop"),
+                        ],
+                    )?)
+                }
+                let node = match keyword {
+                    LoopControl::Break => Node::Break,
+                    LoopControl::Continue => Node::Continue,
+                };
+                self.tokens.next();
+                self.check_next_token(TokenKind::Semicolon)?;
+                Ok(node)
             },
             _ => return Err(ErrorMessage::global().get_error_message_with_location(
                 &ErrorCode::Parse002,
