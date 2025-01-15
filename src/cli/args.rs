@@ -1,5 +1,7 @@
-use crate::utils::error_message::ErrorMessage;
-use crate::common::error_code::ErrorCode;
+use crate::error::{
+    error_message::ErrorMessage,
+    error_code::ErrorCode,
+};
 
 pub struct Config {
     pub option: RunMode,

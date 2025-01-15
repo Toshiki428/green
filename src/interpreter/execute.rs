@@ -2,13 +2,15 @@ use std::collections::HashMap;
 
 use crate::{
     common::{
-        error_code::ErrorCode,
         operator::{ Arithmetic, BinaryLogical, Comparison, Logical, UnaryLogical},
         types::{GreenValue, LiteralValue, Type},
     },
     interpreter::environment::Environment,
     parser::node::Node,
-    utils::error_message::ErrorMessage,
+    error::{
+        error_message::ErrorMessage,
+        error_code::ErrorCode,
+    },
 };
 
 #[derive(Debug)]

@@ -1,9 +1,9 @@
 use serde_json::Value;
-use crate::common::error_code::ErrorCode;
+use crate::error::error_code::ErrorCode;
 use std::sync::OnceLock;
 
 static ERROR_MESSAGE: OnceLock<ErrorMessage> = OnceLock::new();
-const JSON_DATA: &str = include_str!("../../assets/error_message.json");
+const JSON_DATA: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/error_message.json"));
 
 pub struct ErrorMessage {
     pub error_message: Value,

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use crate::{
-    common::{
+    common::types::{GreenValue, LiteralValue},
+    error::{
+        error_message::ErrorMessage,
         error_code::ErrorCode,
-        types::{GreenValue, LiteralValue},
     },
-    utils::error_message::ErrorMessage,
 };
 
 #[derive(Debug)]

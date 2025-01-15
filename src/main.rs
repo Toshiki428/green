@@ -2,11 +2,14 @@ use std::env;
 
 use green::{
     cli,
-    common::error_code::ErrorCode,
     interpreter::execute,
     lexer::lexical_analyzer,
     parser::ast,
-    utils::{error_message::ErrorMessage, misc}
+    utils::misc,
+    error::{
+        error_message::ErrorMessage,
+        error_code::ErrorCode,
+    },
 };
 
 fn main() -> Result<(), String> {

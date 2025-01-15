@@ -6,9 +6,11 @@ use crate::{
         keyword::*,
         operator::*,
         types::{BlockType, LiteralValue},
+    },
+    error::{
+        error_message::ErrorMessage,
         error_code::ErrorCode,
     },
-    utils::error_message::ErrorMessage
 };
 
 struct Parser {

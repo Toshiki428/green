@@ -1,10 +1,13 @@
 use std::{iter::Peekable, str::Chars};
 use crate::{
     common::{
-        error_code::ErrorCode, keyword::*, operator::*
+        keyword::*, operator::*
     },
     lexer::token::{Token, TokenKind},
-    utils::error_message::ErrorMessage,
+    error::{
+        error_message::ErrorMessage,
+        error_code::ErrorCode,
+    },
 };
 
 pub struct Lexer<'a> {
