@@ -10,7 +10,7 @@
     "LEX006": "想定外の数値: {number} \n {row}行 {col}列目",
     "PARSE001": "構文エラー： \n {message}",
     "PARSE002": "想定外のトークン: {token} \n {row}行 {col}列目",
-    "PARSE003": "想定外のプログラム終了",
+    "PARSE003": "想定外のプログラム終了: \n{row}行 {col}列目",
     "PARSE004": "想定外の数値: {number} \n {row}行 {col}列目",
     "PARSE005": "'{token}'が必要 {row}行 {col}列目",
     "PARSE006": "'{statement}'は'{block}'内でのみ使えます {row}行 {col}列目",

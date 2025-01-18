@@ -2,8 +2,7 @@ use std::collections::HashMap;
 use crate::{
     common::types::{GreenValue, LiteralValue},
     error::{
-        error_message::ErrorMessage,
-        error_code::ErrorCode,
+        error_code::ErrorCode, error_context::ErrorContext, error_message::ErrorMessage
     },
 };
 
@@ -32,8 +31,11 @@ impl Environment {
             }
         }
         Err(ErrorMessage::global().get_error_message(
-            &ErrorCode::Runtime007,
-            &[("variable", name)],
+            &ErrorContext::new(
+                ErrorCode::Runtime007,
+                0, 0,
+                vec![("variable", name)]
+            )
         )?)
     }
 
@@ -45,19 +47,25 @@ impl Environment {
                     return Ok(())
                 } else {
                     return Err(ErrorMessage::global().get_error_message(
-                        &ErrorCode::Runtime010,
-                        &[
-                            ("variable_type", &variable.value_type.to_string()),
-                            ("value_type", &value.value_type.to_string()),
-                            ("name", &name),
-                        ],
+                        &ErrorContext::new(
+                            ErrorCode::Runtime010,
+                            0, 0,
+                            vec![
+                                ("variable_type", &variable.value_type.to_string()),
+                                ("value_type", &value.value_type.to_string()),
+                                ("name", &name),
+                            ],
+                        )
                     )?);
                 }
             }
         }
         Err(ErrorMessage::global().get_error_message(
-            &ErrorCode::Runtime007,
-            &[("variable", &name)],
+            &ErrorContext::new(
+                ErrorCode::Runtime007,
+                0, 0,
+                vec![("variable", &name)],
+            )
         )?)
     }
 

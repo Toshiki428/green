@@ -81,6 +81,7 @@ pub enum Node {
     },
     Break,
     Continue,
+    Error,
 }
 
 impl Node {
@@ -195,6 +196,7 @@ impl Node {
             },
             Self::Break => println!("break"),
             Self::Continue => println!("continue"),
+            Self::Error => println!("Error"),
         }
     }
 

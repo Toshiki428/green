@@ -10,6 +10,7 @@ use crate::{
     error::{
         error_message::ErrorMessage,
         error_code::ErrorCode,
+        error_context::ErrorContext,
     },
 };
 
@@ -47,8 +48,11 @@ impl Interpreter {
                 }
             },
             _ => return Err(ErrorMessage::global().get_error_message(
-                &ErrorCode::Runtime003,
-                &[("node", &format!("{:?}",node))],
+                &ErrorContext::new(
+                    ErrorCode::Runtime003,
+                    0, 0,
+                    vec![("node", &format!("{:?}",node))],
+                )
             )?),
         }
         Ok(EvalFlow::Normal)
@@ -90,8 +94,11 @@ impl Interpreter {
                             variables.push((name.to_string(), Type::from_keyword(variable_type)));
                         },
                         _ => return Err(ErrorMessage::global().get_error_message(
-                            &ErrorCode::Runtime011,
-                            &[("node", &format!("{:?}", node))],
+                            &ErrorContext::new(
+                                ErrorCode::Runtime011,
+                                0, 0,
+                                vec![("node", &format!("{:?}", node))],
+                            )
                         )?),
                     }
                 }
@@ -108,8 +115,11 @@ impl Interpreter {
                 return Ok(EvalFlow::Continue);
             }
             _ => return Err(ErrorMessage::global().get_error_message(
-                &ErrorCode::Runtime003,
-                &[("node", &format!("{:?}", node))],
+                &ErrorContext::new(
+                    ErrorCode::Runtime003,
+                    0, 0,
+                    vec![("node", &format!("{:?}", node))],
+                )
             )?),
         }
         Ok(EvalFlow::Normal)
@@ -133,12 +143,15 @@ impl Interpreter {
                         if let Some((parameters, function_node)) = function_data {
                             if parameters.len() != arguments.len() {
                                 return Err(ErrorMessage::global().get_error_message(
-                                    &ErrorCode::Runtime012, 
-                                    &[
-                                        ("parameters", &parameters.len().to_string()),
-                                        ("arguments", &arguments.len().to_string()),
-                                        ("name", name),
-                                    ],
+                                    &ErrorContext::new(
+                                        ErrorCode::Runtime012, 
+                                        0, 0,
+                                        vec![
+                                            ("parameters", &parameters.len().to_string()),
+                                            ("arguments", &arguments.len().to_string()),
+                                            ("name", name),
+                                        ],
+                                    )
                                 )?);
                             }
                             self.variables.push_scope();
@@ -150,13 +163,16 @@ impl Interpreter {
                                 }
                                 else {
                                     return Err(ErrorMessage::global().get_error_message(
-                                        &ErrorCode::Runtime013,
-                                        &[
-                                            ("parameter", &param_type.to_string()),
-                                            ("argument", &value.value_type.to_string()),
-                                            ("function_name", name),
-                                            ("param_name", &param_name),
-                                        ],
+                                        &ErrorContext::new(
+                                            ErrorCode::Runtime013,
+                                            0, 0,
+                                            vec![
+                                                ("parameter", &param_type.to_string()),
+                                                ("argument", &value.value_type.to_string()),
+                                                ("function_name", name),
+                                                ("param_name", &param_name),
+                                            ],
+                                        )
                                     )?)
                                 }
                             }
@@ -170,15 +186,21 @@ impl Interpreter {
                                 EvalFlow::Normal => {},
                                 _ => {
                                     return Err(ErrorMessage::global().get_error_message(
-                                        &ErrorCode::Runtime018,
-                                        &[("node", &format!("{:?}", result))]
+                                        &ErrorContext::new(
+                                            ErrorCode::Runtime018,
+                                            0, 0,
+                                            vec![("node", &format!("{:?}", result))],
+                                        )
                                     )?)
                                 }
                             }
                         } else {
                             return Err(ErrorMessage::global().get_error_message(
-                                &ErrorCode::Runtime002,
-                                &[("function", name)],
+                                &ErrorContext::new(
+                                    ErrorCode::Runtime002,
+                                    0, 0,
+                                    vec![("function", name)],
+                                )
                             )?);
                         }
 
@@ -188,8 +210,11 @@ impl Interpreter {
                 Ok(None)
             }
             _ => return Err(ErrorMessage::global().get_error_message(
-                &ErrorCode::Runtime003,
-                &[("node", &format!("{:?}", node))],
+                &ErrorContext::new(
+                    ErrorCode::Runtime003,
+                    0, 0,
+                    vec![("node", &format!("{:?}", node))],
+                )
             )?),
         }
     }
@@ -206,8 +231,11 @@ impl Interpreter {
             }
         } else {
             return Err(ErrorMessage::global().get_error_message(
-                &ErrorCode::Runtime014,
-                &[("node", &format!("{:?}",condition_node))],
+                &ErrorContext::new(
+                    ErrorCode::Runtime014,
+                    0, 0,
+                    vec![("node", &format!("{:?}",condition_node))],
+                )
             )?)
         }
         Ok(EvalFlow::Normal)
@@ -229,8 +257,11 @@ impl Interpreter {
                 },
                 LiteralValue::Bool(false) => break,
                 _ => return Err(ErrorMessage::global().get_error_message(
-                    &ErrorCode::Runtime014,
-                    &[("node", &format!("{:?}",condition_node))],
+                    &ErrorContext::new(
+                        ErrorCode::Runtime014,
+                        0, 0,
+                        vec![("node", &format!("{:?}",condition_node))],
+                    )
                 )?)
             }
         }
@@ -259,8 +290,11 @@ impl Interpreter {
             },
             Node::Literal{ value: _ } => self.evaluate_literal(node)?,
             _ => return Err(ErrorMessage::global().get_error_message(
-                &ErrorCode::Runtime005,
-                &[("node", &format!("{:?}", node))],
+                &ErrorContext::new(
+                    ErrorCode::Runtime005,
+                    0, 0,
+                    vec![("node", &format!("{:?}", node))],
+                )
             )?),
         };
 
@@ -290,11 +324,14 @@ impl Interpreter {
                             Ok(LiteralValue::Bool(result))
                         } else {
                             Err(ErrorMessage::global().get_error_message(
-                                &ErrorCode::Runtime008,
-                                &[
-                                    ("operator", &operator.to_string()),
-                                    ("node", &format!("{:?}", node)),
-                                ],
+                                &ErrorContext::new(
+                                    ErrorCode::Runtime008,
+                                    0, 0,
+                                    vec![
+                                        ("operator", &operator.to_string()),
+                                        ("node", &format!("{:?}", node)),
+                                    ],
+                                )
                             )?)
                         }
                     },
@@ -303,8 +340,11 @@ impl Interpreter {
                         let right = match right {
                             Some(right) => self.evaluate_expression(&right)?,
                             None => return Err(ErrorMessage::global().get_error_message(
-                                &ErrorCode::Runtime009,
-                                &[],
+                                &ErrorContext::new(
+                                    ErrorCode::Runtime009,
+                                    0, 0,
+                                    vec![],
+                                )
                             )?),
                         };
                         match (left, right) {
@@ -314,12 +354,15 @@ impl Interpreter {
                             },
                             (left_value, right_value) => {
                                 Err(ErrorMessage::global().get_error_message(
-                                    &ErrorCode::Runtime015,
-                                    &[
-                                        ("left", &left_value.to_string()),
-                                        ("operator", &operator.to_string()),
-                                        ("right", &right_value.to_string()),
-                                    ],
+                                    &ErrorContext::new(
+                                        ErrorCode::Runtime015,
+                                        0, 0,
+                                        vec![
+                                            ("left", &left_value.to_string()),
+                                            ("operator", &operator.to_string()),
+                                            ("right", &right_value.to_string()),
+                                        ],
+                                    )
                                 )?)
                             },
                         }
@@ -357,18 +400,25 @@ impl Interpreter {
                             Comparison::Equal => Ok(LiteralValue::Bool(left_value == right_value)),
                             Comparison::NotEqual => Ok(LiteralValue::Bool(left_value != right_value)),
                             _ => Err(ErrorMessage::global().get_error_message(
-                                &ErrorCode::Runtime006,
-                                &[("operator", &operator.to_string())])?),
+                                &ErrorContext::new(
+                                    ErrorCode::Runtime006,
+                                    0, 0,
+                                    vec![("operator", &operator.to_string())],
+                                )
+                            )?),
                         }
                     },
                     (left_value, right_value) => {
                         Err(ErrorMessage::global().get_error_message(
-                            &ErrorCode::Runtime016,
-                            &[
-                                ("left", &left_value.to_string()),
-                                ("operator", &operator.to_string()),
-                                ("right", &right_value.to_string()),
-                            ],
+                            &ErrorContext::new(
+                                ErrorCode::Runtime016,
+                                0, 0,
+                                vec![
+                                    ("left", &left_value.to_string()),
+                                    ("operator", &operator.to_string()),
+                                    ("right", &right_value.to_string()),
+                                ],
+                            )
                         )?)
                     },
                 }
@@ -413,12 +463,15 @@ impl Interpreter {
                                 }
                             },
                             _ => Err(ErrorMessage::global().get_error_message(
-                                &ErrorCode::Runtime015,
-                                &[
-                                    ("left", &left_literal.to_string()),
-                                    ("operator", &operator.to_string()),
-                                    ("right", &right_literal.to_string()),
-                                ],
+                                &ErrorContext::new(
+                                    ErrorCode::Runtime015,
+                                    0, 0,
+                                    vec![
+                                        ("left", &left_literal.to_string()),
+                                        ("operator", &operator.to_string()),
+                                        ("right", &right_literal.to_string()),
+                                    ],
+                                )
                             )?)
                         }
                     },
@@ -441,17 +494,24 @@ impl Interpreter {
                                         Ok(LiteralValue::Int(result))
                                     },
                                     _ => Err(ErrorMessage::global().get_error_message(
-                                        &ErrorCode::Runtime008,
-                                        &[
-                                            ("operator", &operator.to_string()),
-                                            ("node", &format!("{:?}", left)),
-                                        ],
+                                        &ErrorContext::new(
+                                            ErrorCode::Runtime008,
+                                            0, 0,
+                                            vec![
+                                                ("operator", &operator.to_string()),
+                                                ("node", &format!("{:?}", left)),
+                                            ],
+                                        )
                                     )?),
                                 }
                             },
                             _ => {
                                 return Err(ErrorMessage::global().get_error_message(
-                                    &ErrorCode::Runtime009, &[]
+                                    &ErrorContext::new(
+                                        ErrorCode::Runtime009,
+                                        0, 0,
+                                        vec![],
+                                    )
                                 )?);
                             }
                         }
@@ -464,8 +524,11 @@ impl Interpreter {
             },
             Node::Literal { value: _ } => self.evaluate_literal(node),
             _ => Err(ErrorMessage::global().get_error_message(
-                &ErrorCode::Runtime003,
-                &[("node", &format!("{:?}",node))],
+                &ErrorContext::new(
+                    ErrorCode::Runtime003,
+                    0, 0,
+                    vec![("node", &format!("{:?}",node))],
+                )
             )?),
         }
     }

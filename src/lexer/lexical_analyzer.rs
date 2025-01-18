@@ -2,19 +2,18 @@ use std::{iter::Peekable, str::Chars};
 use crate::{
     common::{
         keyword::*, operator::*
-    },
-    lexer::token::{Token, TokenKind},
-    error::{
-        error_message::ErrorMessage,
-        error_code::ErrorCode,
-    },
+    }, error::{
+        error_code::ErrorCode, error_context::ErrorContext
+    }, lexer::token::{Token, TokenKind}
 };
 
+#[derive(Debug, Clone)]
 pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
     tokens: Vec<Token>,
     row: u32,
     col: u32,
+    errors: Vec<ErrorContext>,
 }
 
 impl<'a> Lexer<'a> {
@@ -25,10 +24,11 @@ impl<'a> Lexer<'a> {
             tokens: Vec::new(),
             row: 1,
             col: 1,
+            errors: Vec::new(),
         }
     }
 
-    fn tokenize(mut self) -> Result<Vec<Token>, String> {
+    fn tokenize(&mut self) -> (Vec<Token>, Vec<ErrorContext>) {
         while let Some(&char) = self.chars.peek() {
             match char {
                 ' ' | '\n' | '\r' | '\t' =>  self.next_char(),
@@ -47,18 +47,60 @@ impl<'a> Lexer<'a> {
                     }
                     self.next_char();
                 },
-                '/' => self.lex_slash()?,
-                '"' => self.lex_string()?,
-                '=' => self.lex_equal()?,
-                '!' => self.lex_exclamation()?,
-                '<' | '>' => self.lex_angle()?,
-                _ if char.is_alphabetic() => self.lex_identifier()?,
-                _ if char.is_numeric() => self.lex_number()?,
-                _ => return Err(ErrorMessage::global().get_error_message_with_location(&ErrorCode::Lex002, self.row, self.col, &[("char", &char.to_string())])?),
+                '/' => {
+                    match self.lex_slash() {
+                        Ok(_) => {},
+                        Err(e) => self.errors.push(e),
+                    }
+                },
+                '"' => {
+                    match self.lex_string() {
+                        Ok(_) => {},
+                        Err(e) => self.errors.push(e),
+                    }
+                },
+                '=' => {
+                    match self.lex_equal() {
+                        Ok(_) => {},
+                        Err(e) => self.errors.push(e),
+                    }
+                },
+                '!' => {
+                    match self.lex_exclamation() {
+                        Ok(_) => {},
+                        Err(e) => self.errors.push(e),
+                    }
+                },
+                '<' | '>' => {
+                    match self.lex_angle() {
+                        Ok(_) => {},
+                        Err(e) => self.errors.push(e),
+                    }
+                },
+                _ if char.is_alphabetic() => {
+                    match self.lex_identifier() {
+                        Ok(_) => {},
+                        Err(e) => self.errors.push(e),
+                    }
+                },
+                _ if char.is_numeric() => {
+                    match self.lex_number() {
+                        Ok(_) => {},
+                        Err(e) => self.errors.push(e),
+                    }
+                },
+                _ => {
+                    self.errors.push(ErrorContext::new(
+                        ErrorCode::Lex002,
+                        self.row, self.col,
+                        vec![("char", &char.to_string())]
+                    ));
+                    self.next_char();
+                },
             }
         }
         self.push_token(TokenKind::EOF);
-        return Ok(self.tokens);
+        return (self.tokens.clone(), self.errors.clone());
     }
 
     /// 文字列の字句解析処理
@@ -68,7 +110,7 @@ impl<'a> Lexer<'a> {
     /// ```
     /// lexer.lex_string()?;
     /// ```
-    fn lex_string(&mut self) -> Result<(), String> {
+    fn lex_string(&mut self) -> Result<(), ErrorContext> {
         self.next_char();  // 最初の「"」をスキップ
         let mut string = String::new();
         while let Some(&c) = self.chars.peek() {
@@ -78,7 +120,13 @@ impl<'a> Lexer<'a> {
         }
 
         if self.peek_char()? != '"' {
-            return Err(ErrorMessage::global().get_error_message_with_location(&ErrorCode::Lex003, self.row, self.col, &[])?);
+            return Err(
+                ErrorContext::new(
+                    ErrorCode::Lex003,
+                    self.row, self.col,
+                    vec![],
+                )
+            );
         }
         self.next_char();   // 閉じる「"」をスキップ
         self.push_token(TokenKind::StringLiteral(string));
@@ -86,7 +134,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// スラッシュ記号の字句解析処理
-    fn lex_slash(&mut self) -> Result<(), String> {
+    fn lex_slash(&mut self) -> Result<(), ErrorContext> {
         let start_row = self.row;
         let start_col = self.col;
         self.next_char();       // 最初の`/`をスキップ
@@ -156,7 +204,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// イコール記号の字句解析処理
-    fn lex_equal(&mut self) -> Result<(), String> {
+    fn lex_equal(&mut self) -> Result<(), ErrorContext> {
         self.next_char();
         let operator = match self.peek_char()? {
             '=' => "==",
@@ -178,7 +226,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// ビックリマークの字句解析処理
-    fn lex_exclamation(&mut self) -> Result<(), String> {
+    fn lex_exclamation(&mut self) -> Result<(), ErrorContext> {
         self.next_char();
         let operator = match self.peek_char()? {
             '=' => "!=",
@@ -194,18 +242,18 @@ impl<'a> Lexer<'a> {
                 self.next_char();
             },
             _ => return Err(
-                ErrorMessage::global().get_error_message_with_location(
-                    &ErrorCode::Lex005,
+                ErrorContext::new(
+                    ErrorCode::Lex005,
                     self.row, self.col,
-                    &[("operator", &operator)]
-                )?
+                    vec![("operator", &operator)],
+                )
             ),
         }
         Ok(())
     }
 
     /// `<`と`>`の字句解析
-    fn lex_angle(&mut self) -> Result<(), String> {
+    fn lex_angle(&mut self) -> Result<(), ErrorContext> {
         let start_col = self.col;
         let mut operator = self.peek_char()?.to_string();
         self.next_char();
@@ -230,17 +278,17 @@ impl<'a> Lexer<'a> {
                     None => unreachable!(),
                 }
             },
-            _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                &ErrorCode::Lex005,
+            _ => return Err(ErrorContext::new(
+                ErrorCode::Lex005,
                 self.row, start_col,
-                &[("operator", &operator)],
-            )?),
+                vec![("operator", &operator)],
+            )),
         }
         Ok(())
     }
 
     /// 関数、変数、bool値などの字句解析処理
-    fn lex_identifier(&mut self) -> Result<(), String> {
+    fn lex_identifier(&mut self) -> Result<(), ErrorContext> {
         let start_col = self.col;
         let mut string = String::new();
         loop {
@@ -300,7 +348,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// 数値の字句解析
-    fn lex_number(&mut self) -> Result<(), String> {
+    fn lex_number(&mut self) -> Result<(), ErrorContext> {
         let start_col = self.col;
         let mut number_string = String::new();
 
@@ -357,14 +405,14 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn peek_char(&mut self) -> Result<char, String> {
+    fn peek_char(&mut self) -> Result<char, ErrorContext> {
         match self.chars.peek() {
             Some(c) => Ok(c.clone()),
-            None => Err(ErrorMessage::global().get_error_message_with_location(
-                &ErrorCode::Lex004,
+            None => Err(ErrorContext::new(
+                ErrorCode::Lex004,
                 self.row, self.col,
-                &[],
-            )?)
+                vec![],
+            ))
         }
     }
 }
@@ -390,7 +438,7 @@ impl<'a> Lexer<'a> {
 ///     }
 /// };
 /// ```
-pub fn lex(text: &str) -> Result<Vec<Token>, String> {
-    let lexer = Lexer::new(text);
+pub fn lex(text: &str) -> (Vec<Token>, Vec<ErrorContext>) {
+    let mut lexer = Lexer::new(text);
     lexer.tokenize()
 }

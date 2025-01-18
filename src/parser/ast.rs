@@ -8,14 +8,15 @@ use crate::{
         types::{BlockType, LiteralValue},
     },
     error::{
-        error_message::ErrorMessage,
         error_code::ErrorCode,
+        error_context::ErrorContext,
     },
 };
 
 struct Parser {
     tokens: Peekable<IntoIter<Token>>,
     block_stack: Vec<BlockType>,
+    errors: Vec<ErrorContext>,
 }
 
 impl Parser {
@@ -23,217 +24,188 @@ impl Parser {
         Self{
             tokens: tokens.into_iter().peekable(),
             block_stack: Vec::new(),
+            errors: Vec::new(),
         }
     }
 
     /// ルートの構文解析
-    fn parse_program(&mut self) -> Result<Node, String> {
+    fn parse_program(&mut self) -> Node {
         self.block_stack.push(BlockType::Global);
         let statements = self.parse_statements(BlockType::Global);
         self.block_stack.pop();
         statements
     }
 
-    fn parse_statements(&mut self, block_type: BlockType) -> Result<Node, String> {
+    fn parse_statements(&mut self, block_type: BlockType) -> Node {
         let scope_end = match block_type {
             BlockType::Conditional | BlockType::Function | BlockType::Loop => Some(TokenKind::RBrace),
             BlockType::Global => None,
         };
-        let mut children = Vec::new();
-        while let Some(token) = self.tokens.peek() {
+        let mut statements = Vec::new();
+        loop {
+            let token = match self.peek_token(){
+                Ok(token) => token,
+                Err(node) => {
+                    self.errors.push(node);
+                    break;
+                },
+            };
             if let Some(end) = &scope_end {
                 if &token.kind == end {
                     break;
                 }
             }
             if matches!(&token.kind, TokenKind::EOF) {
-                self.tokens.next();
                 break;
             }
+
             let token = token.clone();
-            let statement = self.parse_statement(token)?;
-            children.push(statement);
+            let statement = self.parse_statement(token);
+            match statement {
+                Ok(node) => statements.push(node),
+                Err(e) => {
+                    self.errors.push(e);
+                    break;
+                },
+            }
         }
 
-        Ok(Node::Block {
+        return Node::Block {
             block_type,
-            statements: children,
-        })
+            statements,
+        }
     }
 
-    fn parse_statement(&mut self, token: Token) -> Result<Node, String> {
+    fn parse_statement(&mut self, token: Token) -> Result<Node, ErrorContext> {
         match token.kind {
-            TokenKind::Identifier(name) => {
-                let name = name.clone();
-                self.tokens.next();
-                let token = self.next_token()?;
-                match token.kind {
-                    TokenKind::LParen => {  // 関数と判定
-                        let arguments = self.parse_argument()?;
-                
-                        self.check_next_token(TokenKind::RParen)?;
-                        self.check_next_token(TokenKind::Semicolon)?;
-                        
-                        return Ok(Node::FunctionCall {
-                            name,
-                            arguments,
-                        });
-                    },
-                    TokenKind::Equal => {  // 変数と判定
-                        let expression = self.parse_expression()?;
-                
-                        self.check_next_token(TokenKind::Semicolon)?;
-                
-                        return Ok(Node::VariableAssignment {
-                            name,
-                            expression: Box::new(expression),
-                        })
-                    },
-                    _ => {
-                        return Err(ErrorMessage::global().get_error_message_with_location(
-                            &ErrorCode::Parse002,
-                            token.row, token.col,
-                            &[("token", &token.kind.to_string())],
-                        )?)
-                    },
-                }
-            },
+            TokenKind::Identifier(name) => self.parse_identifier(name),
             TokenKind::ControlKeyword(keyword) => {
                 match keyword {
-
                     ControlKeyword::If => self.parse_if_statement(),
                     ControlKeyword::While => self.parse_loop_statement(),
-                    
-                    _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                        &ErrorCode::Parse002,
+
+                    _ => return Err(ErrorContext::new(
+                        ErrorCode::Parse002,
                         token.row, token.col,
-                        &[("token", &keyword.to_string())],
-                    )?),
+                        vec![("token", &keyword.to_string())],
+                    )),
                 }
             },
-            TokenKind::DeclarationKeyword(keyword) => {
-                match keyword {
-                    DeclarationKeyword::Let => {
-                        self.tokens.next();
-                        let name_token = self.next_token()?;
-                        let name = match name_token.kind {
-                            TokenKind::Identifier(name) => name,
-                            _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                                &ErrorCode::Parse005,
-                                name_token.row, name_token.col,
-                                &[("token", "変数名")],
-                            )?),
-                        };
-                        self.check_next_token(TokenKind::Colon)?;
-                        let type_token = self.next_token()?;
-                        let variable_type = match type_token.kind {
-                            TokenKind::TypeName(type_name) => type_name,
-                            _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                                &ErrorCode::Parse005,
-                                name_token.row, name_token.col,
-                                &[("token", "型")],
-                            )?),
-                        };
-                        let next_token = self.next_token()?;
-                        let initializer = match next_token.kind {
-                            TokenKind::Semicolon => None,
-                            TokenKind::Equal => {
-                                let expression = self.parse_assignable()?;
-                                self.check_next_token(TokenKind::Semicolon)?;
-                                Some(Box::new(expression))
-                            },
-                            _ =>{
-                                return Err(ErrorMessage::global().get_error_message_with_location(
-                                    &ErrorCode::Parse005,
-                                    next_token.row, next_token.col,
-                                    &[("token", ";")]
-                                )?);
-                            }
-                        };
-                        return Ok(Node::VariableDeclaration {
-                            name: name.to_string(),
-                            variable_type,
-                            initializer,
-                        });
-                    },
-                    DeclarationKeyword::Function => self.parse_function_definition(),
-                }
-            },
+            TokenKind::DeclarationKeyword(keyword) => self.parse_declaration_keyword(keyword),
             TokenKind::FunctionControl(keyword) => {
                 if !self.block_stack.contains(&BlockType::Function) {
-                    return Err(ErrorMessage::global().get_error_message_with_location(
-                        &ErrorCode::Parse006,
+                    self.errors.push(ErrorContext::new(
+                        ErrorCode::Parse006,
                         token.row, token.col,
-                        &[
+                        vec![
                             ("statement", &keyword.to_string()),
                             ("block", "function"),
                         ],
-                    )?)
+                    ))
                 }
                 match keyword {
                     FunctionControl::Return => {
-                        self.tokens.next();
-                        let return_value = self.parse_assignable()?;
-                        self.check_next_token(TokenKind::Semicolon)?;
+                        self.next_token()?;
+                        let return_value = match self.parse_assignable() {
+                            Ok(node) => node,
+                            Err(e) => {
+                                self.errors.push(e);
+                                Node::Error
+                            },
+                        };
+                        match self.check_next_token(TokenKind::Semicolon) {
+                            Ok(_) => {},
+                            Err(e) => self.errors.push(e),
+                        }
                         Ok(Node::ReturnStatement {
-                            assignalbe: Box::new(return_value)
+                            assignalbe: Box::new(return_value),
                         })
                     },
                 }
             },
             TokenKind::LoopControl(keyword) => {
                 if !self.block_stack.contains(&BlockType::Loop) {
-                    return Err(ErrorMessage::global().get_error_message_with_location(
-                        &ErrorCode::Parse006,
+                    self.errors.push(ErrorContext::new(
+                        ErrorCode::Parse006,
                         token.row, token.col,
-                        &[
+                        vec![
                             ("statement", &keyword.to_string()),
                             ("block", "loop"),
                         ],
-                    )?)
+                    ))
                 }
+                
+                self.next_token()?;
+                match self.check_next_token(TokenKind::Semicolon) {
+                    Ok(_) => {},
+                    Err(e) => self.errors.push(e),
+                }
+
                 let node = match keyword {
                     LoopControl::Break => Node::Break,
                     LoopControl::Continue => Node::Continue,
                 };
-                self.tokens.next();
-                self.check_next_token(TokenKind::Semicolon)?;
+
                 Ok(node)
             },
-            _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                &ErrorCode::Parse002,
+            _ => return Err(ErrorContext::new(
+                ErrorCode::Parse002,
                 token.row, token.col,
-                &[("token", &token.kind.to_string())],
-            )?),
+                vec![("token", &token.kind.to_string())],
+            )),
         }
     }
 
-    fn parse_if_statement(&mut self) -> Result<Node, String> {
-        self.tokens.next();
+    fn parse_if_statement(&mut self) -> Result<Node, ErrorContext> {
+        self.next_token()?;
 
-        self.check_next_token(TokenKind::LParen)?;
+        match self.check_next_token(TokenKind::LParen) {
+            Ok(_) => {},
+            Err(e) => self.errors.push(e),
+        }
 
-        let condition = self.parse_expression()?;
+        let condition = match self.parse_expression() {
+            Ok(node) => node,
+            Err(e) => {
+                self.errors.push(e);
+                Node::Error
+            },
+        };
 
-        self.check_next_token(TokenKind::RParen)?;
-        self.check_next_token(TokenKind::LBrace)?;
+        match self.check_next_token(TokenKind::RParen) {
+            Ok(_) => {},
+            Err(e) => self.errors.push(e),
+        }
+        match self.check_next_token(TokenKind::LBrace) {
+            Ok(_) => {},
+            Err(e) => self.errors.push(e),
+        }
 
         self.block_stack.push(BlockType::Conditional);
-        let then_block = self.parse_statements(BlockType::Conditional)?;
+        let then_block = self.parse_statements(BlockType::Conditional);
         self.block_stack.pop();
 
-        self.check_next_token(TokenKind::RBrace)?;
+        match self.check_next_token(TokenKind::RBrace) {
+            Ok(_) => {},
+            Err(e) => self.errors.push(e),
+        }
 
         let else_block = match self.tokens.peek() {
             Some(token) if token.kind == TokenKind::ControlKeyword(ControlKeyword::Else) => {
-                self.tokens.next();
-                self.check_next_token(TokenKind::LBrace)?;
+                self.next_token()?;
+                match self.check_next_token(TokenKind::LBrace) {
+                    Ok(_) => {},
+                    Err(e) => self.errors.push(e),
+                }
         
                 self.block_stack.push(BlockType::Conditional);
-                let else_block = self.parse_statements(BlockType::Conditional)?;
+                let else_block = self.parse_statements(BlockType::Conditional);
                 self.block_stack.pop();
         
-                self.check_next_token(TokenKind::RBrace)?;
+                match self.check_next_token(TokenKind::RBrace) {
+                    Ok(_) => {},
+                    Err(e) => self.errors.push(e),
+                }
 
                 Some(else_block)
             },
@@ -247,49 +219,183 @@ impl Parser {
         })
     }
 
-    fn parse_loop_statement(&mut self) -> Result<Node, String> {
-        self.tokens.next();
-        self.check_next_token(TokenKind::LParen)?;
+    fn parse_loop_statement(&mut self) -> Result<Node, ErrorContext> {
+        self.next_token()?;
+        match self.check_next_token(TokenKind::LParen) {
+            Ok(_) => {},
+            Err(node) => self.errors.push(node),
+        }
 
-        let condition_node = self.parse_expression()?;
+        let condition_node = match self.parse_expression() {
+            Ok(node) => node,
+            Err(e) => {
+                self.errors.push(e);
+                Node::Error
+            },
+        };
 
-        self.check_next_token(TokenKind::RParen)?;
-        self.check_next_token(TokenKind::LBrace)?;
+        match self.check_next_token(TokenKind::RParen) {
+            Ok(_) => {},
+            Err(e) => self.errors.push(e),
+        }
+
+        match self.check_next_token(TokenKind::LBrace) {
+            Ok(_) => {},
+            Err(e) => self.errors.push(e),
+        }
 
         self.block_stack.push(BlockType::Loop);
-        let block = self.parse_statements(BlockType::Loop)?;
+        let block = self.parse_statements(BlockType::Loop);
         self.block_stack.pop();
 
-        self.check_next_token(TokenKind::RBrace)?;
+        match self.check_next_token(TokenKind::RBrace) {
+            Ok(_) => {},
+            Err(e) => self.errors.push(e),
+        }
+
         Ok(Node::LoopStatement {
             condition_node: Box::new(condition_node),
             block: Box::new(block),
         })
     }
 
-    fn parse_function_definition(&mut self) -> Result<Node, String> {
+    fn parse_identifier(&mut self, name: String) -> Result<Node, ErrorContext> {
+        self.next_token()?;  // 変数名または関数名のトークンをスキップスキップ
+        let token = self.next_token()?;
+
+        match token.kind {
+            TokenKind::LParen => {  // 関数と判定
+                let arguments = self.parse_argument();
+
+                match self.check_next_token(TokenKind::RParen) {
+                    Ok(_) => {},
+                    Err(e) => self.errors.push(e),
+                }
+                match self.check_next_token(TokenKind::Semicolon) {
+                    Ok(_) => {},
+                    Err(e) => self.errors.push(e),
+                }
+                
+                return Ok(Node::FunctionCall {
+                    name,
+                    arguments,
+                });
+            },
+            TokenKind::Equal => {  // 変数と判定
+                let expression = self.parse_expression()?;
+                
+                match self.check_next_token(TokenKind::Semicolon) {
+                    Ok(_) => {},
+                    Err(e) => self.errors.push(e),
+                };
+        
+                return Ok(Node::VariableAssignment {
+                    name,
+                    expression: Box::new(expression),
+                })
+            },
+            _ => {
+                return Err(ErrorContext::new(
+                    ErrorCode::Parse002,
+                    token.row, token.col,
+                    vec![("token", &token.kind.to_string())],
+                ))
+            },
+        }
+    }
+
+    fn parse_declaration_keyword(&mut self, keyword: DeclarationKeyword) -> Result<Node, ErrorContext> {
+        match keyword {
+            DeclarationKeyword::Let => {
+                self.next_token()?;
+                let name_token = self.next_token()?;
+                let name = match name_token.kind {
+                    TokenKind::Identifier(name) => name,
+                    _ => {
+                        self.errors.push(ErrorContext::new(
+                            ErrorCode::Parse005,
+                            name_token.row, name_token.col,
+                            vec![("token", "変数名")],
+                        ));
+                        "None".to_string()
+                    }
+                };
+
+                match self.check_next_token(TokenKind::Colon) {
+                    Ok(_) => {},
+                    Err(e) => self.errors.push(e),
+                }
+
+                let type_token = self.next_token()?;
+                let variable_type = match type_token.kind {
+                    TokenKind::TypeName(type_name) => type_name,
+                    _ => {
+                        self.errors.push(ErrorContext::new(
+                            ErrorCode::Parse005,
+                            name_token.row, name_token.col,
+                            vec![("token", "型")],
+                        ));
+                        TypeName::Bool
+                    },
+                };
+
+                let next_token = self.next_token()?;
+                let initializer = match next_token.kind {
+                    TokenKind::Semicolon => None,
+                    TokenKind::Equal => {
+                        let expression = self.parse_assignable()?;
+                        self.check_next_token(TokenKind::Semicolon)?;
+                        Some(Box::new(expression))
+                    },
+                    _ =>{
+                        self.errors.push(ErrorContext::new(
+                            ErrorCode::Parse005,
+                            next_token.row, next_token.col,
+                            vec![("token", ";")],
+                        ));
+                        None
+                    }
+                };
+
+                return Ok(Node::VariableDeclaration {
+                    name: name.to_string(),
+                    variable_type,
+                    initializer,
+                });
+            },
+            DeclarationKeyword::Function => self.parse_function_definition(),
+        }
+    }
+
+    fn parse_function_definition(&mut self) -> Result<Node, ErrorContext> {
         let token = self.next_token()?;
         if self.block_stack.last() != Some(&BlockType::Global) {
-            return Err(ErrorMessage::global().get_error_message_with_location(
-                &ErrorCode::Parse006,
+            self.errors.push(ErrorContext::new(
+                ErrorCode::Parse006,
                 token.row, token.col,
-                &[
+                vec![
                     ("statement", "function"),
                     ("block", "global_block"),
                 ],
-            )?)
+            ))
         }
         
         let token = self.next_token()?;
         let function_name = match token.kind {
             TokenKind::Identifier(name) => name,
-            _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                &ErrorCode::Parse005,
-                token.row, token.col,
-                &[("token", "関数名")]
-            )?),
+            _ => {
+                self.errors.push(ErrorContext::new(
+                    ErrorCode::Parse005,
+                    token.row, token.col,
+                    vec![("token", "関数名")]
+                ));
+                "None".to_string()
+            },
         };
-        self.check_next_token(TokenKind::LParen)?;
+        match self.check_next_token(TokenKind::LParen) {
+            Ok(_) => {},
+            Err(e) => self.errors.push(e),
+        }
 
         // 引数処理
         let mut parameters = Vec::new();
@@ -300,51 +406,81 @@ impl Parser {
             let token = self.next_token()?;
             let name = match token.kind {
                 TokenKind::Identifier(name) => name,
-                _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                    &ErrorCode::Parse002,
-                    token.row, token.col,
-                    &[("token", &token.kind.to_string())],
-                )?),
+                _ => {
+                    self.errors.push(ErrorContext::new(
+                        ErrorCode::Parse002,
+                        token.row, token.col,
+                        vec![("token", &token.kind.to_string())],
+                    ));
+                    "None".to_string()
+                },
             };
             
-            self.check_next_token(TokenKind::Colon)?;
+            match self.check_next_token(TokenKind::Colon) {
+                Ok(_) => {},
+                Err(e) => self.errors.push(e),
+            }
             
             let type_token = self.next_token()?;
             let variable_type = match type_token.kind {
                 TokenKind::TypeName(type_name) => type_name,
-                _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                    &ErrorCode::Parse002,
-                    type_token.row, type_token.col,
-                    &[("token", &type_token.kind.to_string())],
-                )?),
+                _ => {
+                    self.errors.push(ErrorContext::new(
+                        ErrorCode::Parse002,
+                        type_token.row, type_token.col,
+                        vec![("token", &type_token.kind.to_string())],
+                    ));
+                    TypeName::Bool
+                },
             };
+            
+            let token = self.peek_token()?;
+            match token.kind {
+                TokenKind::Comma => { self.next_token()?; },
+                TokenKind::RParen => {
+                    let param = Node::VariableDeclaration {
+                        name,
+                        variable_type,
+                        initializer: None,
+                    };
+                    parameters.push(param);
+                    break;
+                },
+                _ => {
+                    self.errors.push(ErrorContext::new(
+                        ErrorCode::Parse002,
+                        token.row, token.col,
+                        vec![("token", &token.kind.to_string())],
+                    ));
+                    self.next_token()?;
+                },
+            }
+
             let param = Node::VariableDeclaration {
                 name,
                 variable_type,
                 initializer: None,
             };
             parameters.push(param);
-            
-            let token = self.peek_token()?;
-            match token.kind {
-                TokenKind::Comma => { self.tokens.next(); },
-                TokenKind::RParen => break,
-                _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                    &ErrorCode::Parse002,
-                    token.row, token.col,
-                    &[("token", &token.kind.to_string())],
-                )?),
-            }
         }
 
-        self.check_next_token(TokenKind::RParen)?;
-        self.check_next_token(TokenKind::LBrace)?;
+        match self.check_next_token(TokenKind::RParen) {
+            Ok(_) => {},
+            Err(e) => self.errors.push(e),
+        }
+        match self.check_next_token(TokenKind::LBrace) {
+            Ok(_) => {},
+            Err(e) => self.errors.push(e),
+        }
         
         self.block_stack.push(BlockType::Function);
-        let block = self.parse_statements(BlockType::Function)?;
+        let block = self.parse_statements(BlockType::Function);
         self.block_stack.pop();
 
-        self.check_next_token(TokenKind::RBrace)?;
+        match self.check_next_token(TokenKind::RBrace) {
+            Ok(_) => {},
+            Err(e) => self.errors.push(e),
+        }
 
         Ok(Node::FunctionDefinition {
             name: function_name,
@@ -355,29 +491,64 @@ impl Parser {
     }
 
     /// 引数の構文解析
-    fn parse_argument(&mut self) -> Result<Vec<Node>, String> {
+    fn parse_argument(&mut self) -> Vec<Node> {
+
         let mut arguments = Vec::new();
         loop {
-            let token = self.peek_token()?;
+            let token = match self.peek_token() {
+                Ok(token) => token,
+                Err(e) => {
+                    self.errors.push(e);
+                    arguments.push(Node::Error);
+                    break;
+                },
+            };
             if token.kind == TokenKind::RParen { break; }
-            arguments.push(self.parse_assignable()?);
 
-            let token = self.peek_token()?;
+            let arg = match self.parse_assignable() {
+                Ok(node) => node,
+                Err(e) => {
+                    self.errors.push(e);
+                    Node::Error
+                },
+            };
+            arguments.push(arg);
+
+            let token = match self.peek_token() {
+                Ok(token) => token,
+                Err(e) => {
+                    self.errors.push(e);
+                    break;
+                },
+            };
             match token.kind {
-                TokenKind::Comma => { self.tokens.next(); },
+                TokenKind::Comma => {
+                    match self.next_token() {
+                        Ok(_) => {},
+                        Err(e) => {
+                            self.errors.push(e);
+                            break;
+                        },
+                    };
+                },
                 TokenKind::RParen => break,
-                _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                    &ErrorCode::Parse002,
-                    token.row, token.col,
-                    &[("token", &token.kind.to_string())],
-                )?),
+                _ => {
+                    self.errors.push(ErrorContext::new(
+                        ErrorCode::Parse002,
+                        token.row, token.col,
+                        vec![("token", &token.kind.to_string())],
+                    ));
+                    break;
+                }
             }
         }
-        Ok(arguments)
+
+        arguments
     }
 
     /// 割り当て可能値の構文解析（引数、代入式の右辺）
-    fn parse_assignable(&mut self) -> Result<Node, String> {
+    fn parse_assignable(&mut self) -> Result<Node, ErrorContext> {
+
         let token = self.peek_token()?;
         match token.kind.clone() {
             TokenKind::StringLiteral(_) | TokenKind::NumberLiteral(_) | TokenKind::BoolLiteral(_) 
@@ -388,11 +559,14 @@ impl Parser {
                 let next_token = self.peek_n(1)?;
                 match next_token.kind {
                     TokenKind::LParen => {
-                        self.tokens.next();
-                        self.tokens.next();
-                        let arguments = self.parse_argument()?;
+                        self.next_token()?;
+                        self.next_token()?;
+                        let arguments = self.parse_argument();
                         
-                        self.check_next_token(TokenKind::RParen)?;
+                        match self.check_next_token(TokenKind::RParen) {
+                            Ok(_) => {},
+                            Err(e) => self.errors.push(e),
+                        }
                         
                         return Ok(Node::FunctionCallWithReturn {
                             name,
@@ -404,29 +578,34 @@ impl Parser {
                     }
                 }
             },
-            _ => Err(ErrorMessage::global().get_error_message_with_location(
-                &ErrorCode::Parse002,
+            _ => Err(ErrorContext::new(
+                ErrorCode::Parse002,
                 token.row, token.col,
-                &[("token", &token.kind.to_string())],
-            )?),
+                vec![("token", &token.kind.to_string())],
+            )),
         }
     }
 
     /// 式の構文解析
-    fn parse_expression(&mut self) -> Result<Node, String> {
+    fn parse_expression(&mut self) -> Result<Node, ErrorContext> {
         self.parse_logical()
     }
 
     /// 論理演算の構文解析
-    fn parse_logical(&mut self) -> Result<Node, String> {
+    fn parse_logical(&mut self) -> Result<Node, ErrorContext> {
         self.parse_or_expr()
     }
 
     /// OR演算の構文解析
-    fn parse_or_expr(&mut self) -> Result<Node, String> {
+    fn parse_or_expr(&mut self) -> Result<Node, ErrorContext> {
         let mut left = self.parse_and_expr()?;
-        while let Some(TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Or))) = self.tokens.peek().map(|t| &t.kind) {
-            self.tokens.next();
+        loop {
+            let token = self.peek_token()?;
+            if token.kind != TokenKind::LogicalOperator(Logical::Binary(BinaryLogical::Or)) {
+                break;
+            }
+
+            self.next_token()?;
             let right = self.parse_and_expr()?;
             left = Node::Logical {
                 operator: Logical::Binary(BinaryLogical::Or),
@@ -438,28 +617,33 @@ impl Parser {
     }
 
     /// AND演算の構文解析
-    fn parse_and_expr(&mut self) -> Result<Node, String> {
+    fn parse_and_expr(&mut self) -> Result<Node, ErrorContext> {
         let mut left = self.parse_not_expr()?;
-        while let Some(TokenKind::LogicalOperator(operator)) = self.tokens.peek().map(|t| &t.kind) {
-            let operator = operator.clone();
-            match operator {
-                Logical::Binary(BinaryLogical::And) | Logical::Binary(BinaryLogical::Xor) => {
-                    self.tokens.next();
-                    let right = self.parse_not_expr()?;
-                    left = Node::Logical {
-                        operator,
-                        left: Box::new(left),
-                        right: Some(Box::new(right)),
-                    };
+        loop {
+            let token = self.peek_token()?;
+            if let TokenKind::LogicalOperator(op) = token.kind {
+                match op {
+                    Logical::Binary(BinaryLogical::And) | Logical::Binary(BinaryLogical::Xor) => {
+                        self.next_token()?;
+                        let right = self.parse_not_expr()?;
+                        left = Node::Logical {
+                            operator: op,
+                            left: Box::new(left),
+                            right: Some(Box::new(right)),
+                        };
+                    }
+                    _ => break,
                 }
-                _ => break,
+            }
+            else {
+                break;
             }
         }
         Ok(left)
     }
 
     /// NOT演算の構文解析
-    fn parse_not_expr(&mut self) -> Result<Node, String> {
+    fn parse_not_expr(&mut self) -> Result<Node, ErrorContext> {
         let token = self.peek_token()?;
         match token.kind {
             TokenKind::LogicalOperator(Logical::Unary(UnaryLogical::Not)) => {
@@ -476,7 +660,7 @@ impl Parser {
     }
 
     /// 比較式の構文解析
-    fn parse_compare(&mut self) -> Result<Node, String> {
+    fn parse_compare(&mut self) -> Result<Node, ErrorContext> {
         let left = self.parse_value();
         let token = self.peek_token()?;
         let operator = match token.kind {
@@ -484,7 +668,7 @@ impl Parser {
             _ => return left,
         };
         
-        self.tokens.next();
+        self.next_token()?;
         let right = self.parse_value()?;
         return Ok(Node::Compare {
             operator,
@@ -494,7 +678,7 @@ impl Parser {
     }
 
     /// 値の構文解析
-    fn parse_value(&mut self) -> Result<Node, String> {
+    fn parse_value(&mut self) -> Result<Node, ErrorContext> {
         let token = self.peek_token()?;
         match token.kind {
             TokenKind::NumberLiteral(_) | TokenKind::ArithmeticOperator(Arithmetic::Plus|Arithmetic::Minus)
@@ -502,16 +686,16 @@ impl Parser {
                 return self.parse_add_and_sub()
             },
             TokenKind::StringLiteral(_) => return self.parse_literal(),
-            _ => Err(ErrorMessage::global().get_error_message_with_location(
-                &ErrorCode::Parse002,
+            _ => Err(ErrorContext::new(
+                ErrorCode::Parse002,
                 token.row, token.col,
-                &[("token", &token.kind.to_string())],
-            )?),
+                vec![("token", &token.kind.to_string())],
+            )),
         }
     }
 
     /// 足し算、引き算の構文解析
-    fn parse_add_and_sub(&mut self) -> Result<Node, String> {
+    fn parse_add_and_sub(&mut self) -> Result<Node, ErrorContext> {
         let mut left = self.parse_mul_and_div()?;
         while let Some(TokenKind::ArithmeticOperator(Arithmetic::Plus|Arithmetic::Minus)) = self.tokens.peek().map(|t| &t.kind) {
             let operator = match self.next_token()?.kind {
@@ -529,14 +713,14 @@ impl Parser {
     }
 
     /// 掛け算、割り算の構文解析
-    fn parse_mul_and_div(&mut self) -> Result<Node, String> {
+    fn parse_mul_and_div(&mut self) -> Result<Node, ErrorContext> {
         let mut left = self.parse_unary()?;
         while let Some(TokenKind::ArithmeticOperator(Arithmetic::Multiply|Arithmetic::Divide)) = self.tokens.peek().map(|t| &t.kind) {
             let operator = match self.next_token()?.kind {
                 TokenKind::ArithmeticOperator(op) => op,
                 _ => unreachable!(),
             };
-            self.tokens.next();
+            self.next_token()?;
             let right = self.parse_unary()?;
             left = Node::Arithmetic {
                 operator: operator,
@@ -548,7 +732,7 @@ impl Parser {
     }
 
     /// 単項演算子の構文解析
-    fn parse_unary(&mut self) -> Result<Node, String> {
+    fn parse_unary(&mut self) -> Result<Node, ErrorContext> {
         let token = self.peek_token()?;
         match token.kind {
             TokenKind::NumberLiteral(_) | TokenKind::LParen | TokenKind::Identifier(_)
@@ -556,7 +740,7 @@ impl Parser {
                 return self.parse_primary()
             },
             TokenKind::ArithmeticOperator(Arithmetic::Minus) => {
-                self.tokens.next();
+                self.next_token()?;
                 let number = self.parse_primary()?;
                 Ok(Node::Arithmetic {
                     operator: Arithmetic::Minus,
@@ -564,53 +748,50 @@ impl Parser {
                     right: None,
                 })
             },
-            _ => Err(ErrorMessage::global().get_error_message_with_location(
-                &ErrorCode::Parse002,
-                token.row,
-                token.col,
-                &[("token", &token.kind.to_string())]
-            )?),
+            _ => Err(ErrorContext::new(
+                ErrorCode::Parse002,
+                token.row, token.col,
+                vec![("token", &token.kind.to_string())],
+            )),
         }
     }
 
     /// 数値、計算式の'()'の構文解析
-    fn parse_primary(&mut self) -> Result<Node, String> {
+    fn parse_primary(&mut self) -> Result<Node, ErrorContext> {
         let token = self.peek_token()?;
         match token.kind{
             TokenKind::NumberLiteral(_) => return self.parse_literal(),
             TokenKind::LParen => {
-                self.tokens.next();
+                self.next_token()?;
                 let expr = self.parse_add_and_sub();
 
                 self.check_next_token(TokenKind::RParen)?;
                 return expr;
             },
             TokenKind::Identifier(_) => return self.parse_variable(),
-            _ => Err(ErrorMessage::global().get_error_message_with_location(
-                &ErrorCode::Parse002,
-                token.row,
-                token.col,
-                &[("token", &token.kind.to_string())]
-            )?),
+            _ => Err(ErrorContext::new(
+                ErrorCode::Parse002,
+                token.row, token.col,
+                vec![("token", &token.kind.to_string())],
+            )),
         }
     }
 
     /// 変数呼び出しの構文解析
-    fn parse_variable(&mut self) -> Result<Node, String> {
+    fn parse_variable(&mut self) -> Result<Node, ErrorContext> {
         let token = self.next_token()?;
         match token.kind {
             TokenKind::Identifier(name) => Ok(Node::Variable { name }),
-            _ => Err(ErrorMessage::global().get_error_message_with_location(
-                &ErrorCode::Parse002,
-                token.row,
-                token.col,
-                &[("token", &token.kind.to_string())]
-            )?),
+            _ => Err(ErrorContext::new(
+                ErrorCode::Parse002,
+                token.row,token.col,
+                vec![("token", &token.kind.to_string())],
+            )),
         }
     }
 
     /// リテラル型の構文解析（String, Number, Bool）
-    fn parse_literal(&mut self) -> Result<Node, String> {
+    fn parse_literal(&mut self) -> Result<Node, ErrorContext> {
         let token = self.next_token()?;
         match token.kind {
             TokenKind::StringLiteral(value) => {
@@ -621,7 +802,7 @@ impl Parser {
                     let token = self.peek_token()?;
                     match token.kind {
                         TokenKind::Dot => {
-                            self.tokens.next();
+                            self.next_token()?;
                             let mut number_string = integer.clone() + ".";
                             let token = self.next_token()?;
                             if let TokenKind::NumberLiteral(decimal) = token.kind {
@@ -630,20 +811,20 @@ impl Parser {
                                     return Ok(Node::Literal { value: LiteralValue::Float(float_value) });
                                 }
                             }
-                            return Err(ErrorMessage::global().get_error_message_with_location(
-                                &ErrorCode::Parse004,
+                            return Err(ErrorContext::new(
+                                ErrorCode::Parse004,
                                 token.row, token.col,
-                                &[("number", &number_string)],
-                            )?)
+                                vec![("number", &number_string)],
+                            ))
                         },
                         _ => return Ok(Node::Literal { value: LiteralValue::Int(int_value) })
                     }
                 } else {
-                    return Err(ErrorMessage::global().get_error_message_with_location(
-                        &ErrorCode::Parse004,
+                    return Err(ErrorContext::new(
+                        ErrorCode::Parse004,
                         token.row, token.col,
-                        &[("number", &integer)],
-                    )?)
+                        vec![("number", &integer)],
+                    ))
                 }
             },
             TokenKind::BoolLiteral(value) => {
@@ -656,59 +837,86 @@ impl Parser {
                     },
                 }
             },
-            _ => return Err(ErrorMessage::global().get_error_message_with_location(
-                &ErrorCode::Parse002,
+            _ => return Err(ErrorContext::new(
+                ErrorCode::Parse002,
                 token.row,
                 token.col,
-                &[("token", &token.kind.to_string())]
-            )?),
+                vec![("token", &token.kind.to_string())],
+            )),
         }
     }
 
-    fn peek_token(&mut self) -> Result<Token, String> {
+    fn peek_token(&mut self) -> Result<Token, ErrorContext> {
         match self.tokens.peek() {
             Some(token) => Ok(token.clone()),
-            None => Err(ErrorMessage::global().get_error_message(&ErrorCode::Parse003, &[])?),
+            // self.next_tokenを使ってトークンを進める限りNoneの可能性はない
+            None => {
+                Err(ErrorContext::new(
+                    ErrorCode::Parse003,
+                    0, 0,
+                    vec![],
+                ))
+            },
         }
     }
 
-    fn next_token(&mut self) -> Result<Token, String> {
+    fn next_token(&mut self) -> Result<Token, ErrorContext> {
         match self.tokens.next() {
+            // 正常な動作であれば、peekでEOFを確認してループを抜けるため、この条件で問題ない
+            Some(token) if token.kind == TokenKind::EOF => {
+                Err(ErrorContext::new(
+                    ErrorCode::Parse003,
+                    token.row, token.col,
+                    vec![],
+                ))
+            },
             Some(token) => Ok(token),
-            None => Err(ErrorMessage::global().get_error_message(&ErrorCode::Parse003, &[])?),
+            // このtokenを使ってトークンを進める限りNoneの可能性はない
+            None => {
+                Err(ErrorContext::new(
+                    ErrorCode::Parse003,
+                    0, 0,
+                    vec![],
+                ))
+            },
         }
     }
 
-    fn check_next_token(&mut self, token_kind: TokenKind) -> Result<Token, String> {
-        let token = self.next_token()?;
+    fn check_next_token(&mut self, token_kind: TokenKind) -> Result<Token, ErrorContext> {
+        let token = self.peek_token()?;
         if token.kind == token_kind {
+            self.next_token()?;
             Ok(token)
         } else {
-            let kind_str = &token.kind.to_string();
+            let kind_str = &token_kind.to_string();
 
-            Err(ErrorMessage::global().get_error_message_with_location(
-                &ErrorCode::Parse005,
-                token.row,
-                token.col,
-                &[("token", kind_str)]
-            )?)
+            Err(ErrorContext::new(
+                ErrorCode::Parse005,
+                token.row, token.col,
+                vec![("token", kind_str)],
+            ))
         }
     }
 
     /// n+1個先のTokenを確認
     /// 
     /// n=0のとき1個先、n=1のとき2個先
-    fn peek_n(&mut self, n: usize) -> Result<Token, String> {
+    fn peek_n(&mut self, n: usize) -> Result<Token, ErrorContext> {
+        let token = self.peek_token()?;
         match self.tokens.by_ref().clone().nth(n) {
             Some(token) => Ok(token),
-            None => Err(ErrorMessage::global().get_error_message(&ErrorCode::Parse003, &[])?)
+            None => Err(ErrorContext::new(
+                ErrorCode::Parse003,
+                token.row, token.col,
+                vec![]
+            ))
         }
     }
 }
 
 /// 構文解析を行う
-pub fn parse(tokens: Vec<Token>) -> Result<Node, String> {
+pub fn parse(tokens: Vec<Token>) -> (Node, Vec<ErrorContext>) {
     let mut parser = Parser::new(tokens);
-    let node = parser.parse_program()?;
-    Ok(node)
+    let node = parser.parse_program();
+    (node, parser.errors)
 }

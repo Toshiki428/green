@@ -1,3 +1,4 @@
+#[derive(Debug, PartialEq, Clone)]
 pub enum ErrorCode {
     /// コマンドオプションエラー
     Cmd001,
