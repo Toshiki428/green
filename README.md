@@ -4,11 +4,13 @@
 ```txt
 <program> ::= <statements>
 <statements> ::= <statement> | <statements> <statement>
-<statement> ::= <function_call> | <variable_declaration> | <if_statement> | <function_definition> | <while_statement>
+<statement> ::= <function_call> | <variable_declaration> | <if_statement> | <function_definition> | <while_statement> | <coroutine_statement>
 <if_statement> ::= "if" "(" <assignable> ")" <block> [ "else" <block> ]
 <function_definition> = "function" <function_name> "(" ((<variable> ":" <type> "," )* <variable> ":" <type>)? ")" <function_block>
 <while_statement> ::= "while" "(" <assignable> ")" <loop_block>
+<coroutine_statement> ::= "coroutine" <function_name> "(" ")" <coroutine_block>
 <block> ::= "{" <statements> "}"
+<coroutine_block> ::= "{" <statements> "yield" "}"
 <function_block> ::= "{" <statements> ("return" <assignable> ";")* "}"
 <loop_block> ::= "{" <statements> ("continue" ";" | "break" ";")* "}"
 <function_call> ::= <function_name> "(" <argument> ")"
@@ -52,3 +54,34 @@
   - SYNTAX
   - RUNTIME
   - ALL
+
+## コルーチンの書き方
+```
+coroutine name() {
+  print("A");
+  yield;
+  print("B");
+  yield;
+  print("C");
+}
+
+coro task = name();
+print(1);
+resume task;
+print(2);
+resume task;
+print(3);
+resume task;
+print(4);
+```
+
+出力結果
+```
+1
+A
+2
+B
+3
+C
+4
+```

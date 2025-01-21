@@ -35,12 +35,16 @@ impl ControlKeyword {
 pub enum DeclarationKeyword {
     Let,
     Function,
+    Coroutine,
+    Coro,
 }
 impl DeclarationKeyword {
     pub fn from_str(str: &str) -> Option<Self> {
         match str {
             "let" => Some(Self::Let),
             "function" => Some(Self::Function),
+            "coroutine" => Some(Self::Coroutine),
+            "coro" => Some(Self::Coro),
             _ => None,
         }
     }
@@ -48,6 +52,8 @@ impl DeclarationKeyword {
         let str = match self {
             Self::Let => "let",
             Self::Function => "function",
+            Self::Coroutine => "coroutine",
+            Self::Coro => "coro",
         };
         str.to_string()
     }
@@ -143,6 +149,29 @@ impl BoolKeyword {
         let str = match self {
             Self::True => "true",
             Self::False => "false",
+        };
+        str.to_string()
+    }
+}
+
+/// コルーチン
+#[derive(Debug, Clone, PartialEq)]
+pub enum CoroutineControl {
+    Yield,
+    Resume,
+}
+impl CoroutineControl {
+    pub fn from_str(str: &str) -> Option<Self> {
+        match str {
+            "yield" => Some(Self::Yield),
+            "resume" => Some(Self::Resume),
+            _ => None,
+        }
+    }
+    pub fn to_string(&self) -> String {
+        let str = match self {
+            Self::Yield => "yield",
+            Self::Resume => "resume",
         };
         str.to_string()
     }

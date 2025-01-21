@@ -31,6 +31,7 @@ pub enum TokenKind {
     TypeName(TypeName),
     LoopControl(LoopControl),
     FunctionControl(FunctionControl),
+    CoroutineControl(CoroutineControl),
 
     // 終端
     EOF,
@@ -73,6 +74,7 @@ impl TokenKind {
             Self::DeclarationKeyword(keyword) => &keyword.to_string(),
             Self::LoopControl(keyword) => &keyword.to_string(),
             Self::FunctionControl(keyword) => &keyword.to_string(),
+            Self::CoroutineControl(keyword) => &keyword.to_string(),
 
             Self::EOF => "EOF",
             

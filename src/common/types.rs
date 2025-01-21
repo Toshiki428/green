@@ -7,6 +7,7 @@ pub enum Type {
     Int,
     Bool,
     String,
+    Coroutine,
 }
 impl Type {
     pub fn from_keyword(type_name: &TypeName) -> Self {
@@ -23,6 +24,7 @@ impl Type {
             Self::Float => "float".to_string(),
             Self::Bool => "bool".to_string(),
             Self::String => "string".to_string(),
+            Self::Coroutine => "coroutine".to_string(),
         }
     }
 }
@@ -66,6 +68,8 @@ impl GreenValue {
 pub enum BlockType {
     /// 関数ブロック
     Function,
+    /// コルーチンブロック
+    Coroutine,
     /// 条件分岐ブロック
     Conditional,
     /// ループブロック
@@ -78,6 +82,7 @@ impl BlockType {
     pub fn to_string(&self) -> String {
         match self {
             Self::Conditional => "Conditional".to_string(),
+            Self::Coroutine => "Coroutine".to_string(),
             Self::Function => "Function".to_string(),
             Self::Global => "Global".to_string(),
             Self::Loop => "Loop".to_string(),

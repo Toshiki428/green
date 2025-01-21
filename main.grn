@@ -52,3 +52,16 @@ function test_continue(a:int, b: int) {
 
 print(test_continue(15, 0));
 print(test_continue(15, 1));
+
+coroutine test_coroutine() {
+    let a: int = 10;
+    print(a);
+    yield;
+    print(a);
+}
+
+coro task1 = test_coroutine();
+resume task1;
+print("A");
+resume task1;
+resume task1; 

@@ -50,6 +50,13 @@ pub enum ErrorCode {
     Runtime016,
     Runtime017,
     Runtime018,
+    /// 未定義のコルーチン
+    Runtime019,
+    /// 不正なコルーチン生成
+    Runtime020,
+    /// 完了したタスクの呼び出し
+    Runtime021,
+
     ALL,
 }
 
@@ -88,6 +95,9 @@ impl ErrorCode {
             Self::Runtime016 => "RUNTIME016",
             Self::Runtime017 => "RUNTIME017",
             Self::Runtime018 => "RUNTIME018",
+            Self::Runtime019 => "RUNTIME019",
+            Self::Runtime020 => "RUNTIME020",
+            Self::Runtime021 => "RUNTIME021",
             Self::ALL => "ALL",
         };
         str.to_string()

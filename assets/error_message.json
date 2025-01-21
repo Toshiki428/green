@@ -31,5 +31,8 @@
     "RUNTIME016": "異なる型の比較: 左: {left} 演算子: {operator} 右: {right}",
     "RUNTIME017": "想定外のループ条件: {node}",
     "RUNTIME018": "想定外のフロー: {node}",
+    "RUNTIME019": "未定義のコルーチン: {coroutine}",
+    "RUNTIME020": "不正なコルーチン定義: {coroutine}",
+    "RUNTIME021": "完了したタスクの呼び出し: {coroutine_name}",
     "ALL": "不明なエラー"
 }

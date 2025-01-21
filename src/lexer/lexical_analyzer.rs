@@ -317,7 +317,7 @@ impl<'a> Lexer<'a> {
                     None => unreachable!(),
                 }
             },
-            "let" | "function" => {
+            "let" | "function" | "coroutine" | "coro" => {
                 match DeclarationKeyword::from_str(&string) {
                     Some(keyword) => self.push_token_with_location(TokenKind::DeclarationKeyword(keyword), self.row, start_col),
                     None => unreachable!(),
@@ -340,7 +340,13 @@ impl<'a> Lexer<'a> {
                     Some(keyword) => self.push_token_with_location(TokenKind::LoopControl(keyword), self.row, start_col),
                     None => unreachable!(),
                 }
-            }
+            },
+            "yield" | "resume" => {
+                match CoroutineControl::from_str(&string) {
+                    Some(keyword) => self.push_token_with_location(TokenKind::CoroutineControl(keyword), self.row, start_col),
+                    None => unreachable!(),
+                }
+            },
             _ => self.push_token_with_location(TokenKind::Identifier(string), self.row, start_col),
         }
 

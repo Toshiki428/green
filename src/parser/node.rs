@@ -21,6 +21,23 @@ pub enum Node {
         name: String,
         arguments: Vec<Node>,
     },
+
+    /// コルーチン定義
+    CoroutineDefinition {
+        name: String,
+        block: Box<Node>,
+    },
+    /// コルーチンのインスタンス化
+    CoroutineInstantiation {
+        task_name: String,
+        coroutine_name: String,
+    },
+    /// コルーチンの再開
+    CoroutineResume {
+        task_name: String,
+    },
+    Yield,
+
     /// 変数宣言
     VariableDeclaration {
         name: String,
@@ -111,6 +128,15 @@ impl Node {
                     argument.print(depth+2);
                 }
             },
+            Self::CoroutineResume { task_name  } => {
+                println!("CoroutineResume: {}", task_name);
+            },
+            Self::CoroutineInstantiation { task_name, coroutine_name } => {
+                println!("CoroutineInstantiation: {} -> {}", coroutine_name, task_name);
+            },
+            Self::Yield => {
+                println!("Yield");
+            },
             Self::VariableDeclaration { name, variable_type, initializer } => {
                 println!("VariableDeaclaration: {} ({})", name, variable_type.to_string());
                 if let Some(expression) = initializer {
@@ -177,8 +203,6 @@ impl Node {
                 self.indent(depth+1);
                 println!("condition_node");
                 condition_node.print(depth+2);
-                self.indent(depth+1);
-                println!("block");
                 block.print(depth+2);
             },
             Self::FunctionDefinition { name, parameters, block } => {
@@ -186,9 +210,11 @@ impl Node {
                 for param in parameters {
                     param.print(depth+1);
                 }
-                self.indent(depth+1);
-                println!("block:");
-                block.print(depth+2);
+                block.print(depth+1);
+            },
+            Self::CoroutineDefinition { name, block } => {
+                println!("CoroutineDefinition: {}", name);
+                block.print(depth+1);
             },
             Self::ReturnStatement { assignalbe } => {
                 println!("Return:");

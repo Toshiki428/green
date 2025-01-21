@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 
+use super::{
+    coroutine::{CoroutineManager, CoroutineStatus},
+    environment::Environment,
+};
 use crate::{
     common::{
         operator::{ Arithmetic, BinaryLogical, Comparison, Logical, UnaryLogical},
         types::{GreenValue, LiteralValue, Type},
     },
-    interpreter::environment::Environment,
     parser::node::Node,
     error::{
         error_message::ErrorMessage,
@@ -25,13 +28,15 @@ pub enum EvalFlow<T> {
 struct Interpreter {
     variables: Environment,
     functions: HashMap<String, (Vec<(String, Type)>, Box<Node>)>,
+    coroutine_manager: CoroutineManager,
 }
 
 impl Interpreter {
     fn new() -> Self {
-        Interpreter {
+        Self {
             variables: Environment::new(),
             functions: HashMap::new(),
+            coroutine_manager: CoroutineManager::new(),
         }
     }
 
@@ -65,6 +70,14 @@ impl Interpreter {
             },
             Node::VariableDeclaration { name, variable_type, initializer } => {
                 let value_type = Type::from_keyword(variable_type);
+                match value_type {
+                    Type::Coroutine => {
+
+                    },
+                    _ => {
+
+                    },
+                }
                 let value = match initializer {
                     Some(expression) => self.evaluate_assignable(expression)?.value,
                     None => LiteralValue::Null,
@@ -108,6 +121,58 @@ impl Interpreter {
                 let return_value = self.evaluate_assignable(assignalbe)?;
                 return Ok(EvalFlow::Return(return_value));
             },
+
+            Node::CoroutineDefinition { name, block } => {
+                self.coroutine_manager.add_def(name, block);
+            },
+            Node::CoroutineInstantiation { task_name, coroutine_name } => {
+                match self.coroutine_manager.add_task(task_name, coroutine_name) {
+                    Ok(_) => {},
+                    Err(e) => return Err(ErrorMessage::global().get_error_message(&e)?),
+                }
+            },
+            Node::CoroutineResume { task_name } => {
+                let mut task = match self.coroutine_manager.get_task(task_name) {
+                    Ok(task) => task,
+                    Err(e) => return Err(ErrorMessage::global().get_error_message(&e)?),
+                };
+
+                match &task.status {
+                    CoroutineStatus::Completed => {
+                        return Err(ErrorMessage::global().get_error_message(
+                            &ErrorContext::new(ErrorCode::Runtime021, 0, 0, vec![("coroutine_name", task_name)])
+                        )?)
+                    },
+                    CoroutineStatus::Ready | CoroutineStatus::Paused => {
+                        task.status = CoroutineStatus::Running;
+                    },
+                    CoroutineStatus::Running => {
+                        panic!("今のところ存在しないエラー")
+                    },
+                }
+
+                loop {
+                    if matches!(task.status, CoroutineStatus::Completed) {
+                        self.coroutine_manager.set_task(task_name, task);
+                        break;
+                    }
+                    let index = task.current_position;
+                    let node = &task.process[index];
+                    match node {
+                        Node::Yield => {
+                            task.step();
+                            task.status = CoroutineStatus::Paused;
+                            self.coroutine_manager.set_task(task_name, task);
+                            break;
+                        },
+                        _ => {
+                            self.statement(node)?;
+                            task.step();                            
+                        },
+                    }
+                }
+            },
+
             Node::Break => {
                 return Ok(EvalFlow::Break);
             },
