@@ -3,7 +3,7 @@ use std::env;
 use green::{
     cli, error::{
         error_code::ErrorCode, error_context::ErrorContext, error_message::ErrorMessage
-    },interpreter::execute, lexer::lexical_analyzer, parser::ast, utils::misc
+    },interpreter::execute, lexer::lexical_analyzer, parser::ast, utils::{ast_to_json::ast_to_json, misc}
 };
 
 fn main() -> Result<(), String> {
@@ -48,25 +48,27 @@ fn main() -> Result<(), String> {
         error_flag = true;
     }
 
-    if error_flag {
-        for error in errors {
-            let error_msg = ErrorMessage::global().get_error_message_with_location(error)?;
-            println!("{}", error_msg);
-        }
-        return Err("error".to_string())
-    }
+    // if error_flag {
+    //     for error in errors {
+    //         let error_msg = ErrorMessage::global().get_error_message_with_location(error)?;
+    //         println!("{}", error_msg);
+    //     }
+    //     return Err("error".to_string())
+    // }
 
-    if config.option == cli::args::RunMode::Execute {
-        if let Err(e) = execute::execute(&ast) {
-            return Err(ErrorMessage::global().get_error_message(
-                &ErrorContext::new(
-                    ErrorCode::Runtime001,
-                    0, 0,
-                    vec![("message", &e)],
-                )
-            )?)
-        }
-    }
+    // if config.option == cli::args::RunMode::Execute {
+    //     if let Err(e) = execute::execute(&ast) {
+    //         return Err(ErrorMessage::global().get_error_message(
+    //             &ErrorContext::new(
+    //                 ErrorCode::Runtime001,
+    //                 0, 0,
+    //                 vec![("message", &e)],
+    //             )
+    //         )?)
+    //     }
+    // }
+
+    ast_to_json(ast);
 
     return Ok(())
 }
