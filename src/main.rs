@@ -1,4 +1,4 @@
-use std::env;
+use clap::Parser;
 
 use green::{
     cli, error::{
@@ -9,20 +9,16 @@ use green::{
 fn main() -> Result<(), String> {
     let mut error_flag = false;
 
-    let args: Vec<String> = env::args().collect();
-    let config = match cli::args::Config::new(&args) {
-        Ok(config) => config,
-        Err(e) => return Err(e),
-    };
+    let cli = cli::args::Cli::parse();
     
-    let content = match misc::load_file_content(&config.file_path) {
+    let content = match misc::load_file_content(&cli.file) {
         Ok(content) => content,
         Err(_) => {
             return Err(ErrorMessage::global().get_error_message(
                 &ErrorContext::new(
                     ErrorCode::Io001,
                     0, 0,
-                    vec![("file_name", &config.file_path)],
+                    vec![("file_name", &cli.file)],
                 )
             )?)
         }
@@ -48,27 +44,27 @@ fn main() -> Result<(), String> {
         error_flag = true;
     }
 
-    // if error_flag {
-    //     for error in errors {
-    //         let error_msg = ErrorMessage::global().get_error_message_with_location(error)?;
-    //         println!("{}", error_msg);
-    //     }
-    //     return Err("error".to_string())
-    // }
+    if error_flag {
+        for error in errors {
+            let error_msg = ErrorMessage::global().get_error_message_with_location(error)?;
+            println!("{}", error_msg);
+        }
+        return Err("error".to_string())
+    }
 
-    // if config.option == cli::args::RunMode::Execute {
-    //     if let Err(e) = execute::execute(&ast) {
-    //         return Err(ErrorMessage::global().get_error_message(
-    //             &ErrorContext::new(
-    //                 ErrorCode::Runtime001,
-    //                 0, 0,
-    //                 vec![("message", &e)],
-    //             )
-    //         )?)
-    //     }
-    // }
-
-    ast_to_json(ast);
+    if cli.analyze {
+        let _ = ast_to_json(ast);
+    } else {
+        if let Err(e) = execute::execute(&ast) {
+            return Err(ErrorMessage::global().get_error_message(
+                &ErrorContext::new(
+                    ErrorCode::Runtime001,
+                    0, 0,
+                    vec![("message", &e)],
+                )
+            )?)
+        }
+    }
 
     return Ok(())
 }
