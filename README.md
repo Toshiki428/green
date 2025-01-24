@@ -1,5 +1,8 @@
 # Green言語
 
+## To Do
+- 型チェックを入れる（今は`int`変数に`string`などが入る）
+
 ## 構文
 ```txt
 <program> ::= <statements>

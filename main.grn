@@ -1,10 +1,26 @@
-/// カウント用の変数
-/// int型
-let i: int = 0;
-/// @process 10回繰り返す
-while (i < 10) {
-    print(i);
-    i = i+1;
+function main() {
+    /// カウント用の変数
+    /// int型
+    let i: int = 0;
+    /// @process 10回繰り返す
+    while (i < 10) {
+        print(i);
+        i = i+1;
+    }
+
+    print(test_return(15, 0));
+    print(test_return(15, 1));
+
+    print(test_break(15, 0));
+    print(test_break(15, 1));
+
+    print(test_continue(15, 0));
+    print(test_continue(15, 1));
+
+    coro task1 = test_coroutine();
+    resume task1;
+    print("A");
+    resume task1;
 }
 
 /// return句を試すための関数
@@ -22,9 +38,6 @@ function test_return(a: int, b:int) {
     return sum;
 }
 
-print(test_return(15, 0));
-print(test_return(15, 1));
-
 function test_break(a: int, b: int) {
     let i: int = 0;
     let sum: int = 0;
@@ -37,8 +50,6 @@ function test_break(a: int, b: int) {
     }
     return sum;
 }
-print(test_break(15, 0));
-print(test_break(15, 1));
 
 function test_continue(a:int, b: int) {
     let i: int = 0;
@@ -55,9 +66,6 @@ function test_continue(a:int, b: int) {
     return sum;
 }
 
-print(test_continue(15, 0));
-print(test_continue(15, 1));
-
 /// コルーチン
 /// 2回「10」を返す
 coroutine test_coroutine() {
@@ -66,9 +74,3 @@ coroutine test_coroutine() {
     yield;
     print(a);
 }
-
-coro task1 = test_coroutine();
-resume task1;
-print("A");
-resume task1;
-

@@ -6,7 +6,13 @@ use crate::common::{
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Node {
-    /// プログラム全体のノード
+    /// ルートのノード
+    Program {
+        functions: Vec<Node>,
+        coroutines: Vec<Node>,
+    },
+    
+    /// ブロックのノード
     Block {
         block_type: BlockType,
         statements: Vec<Node>,
@@ -114,6 +120,17 @@ impl Node {
     pub fn print(&self, depth: i32) {
         self.indent(depth);
         match self {
+            Self::Program { functions, coroutines } => {
+                println!("functions:");
+                for function in functions {
+                    function.print(depth+1);
+                }
+                self.indent(depth);
+                println!("coroutines:");
+                for coroutine in coroutines {
+                    coroutine.print(depth+1);
+                }
+            },
             Self::Block { block_type, statements } => {
                 println!("block: ({})", block_type.to_string());
                 for statement in statements {

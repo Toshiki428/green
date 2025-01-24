@@ -33,9 +33,255 @@ impl Parser {
     /// ルートの構文解析
     fn parse_program(&mut self) -> Node {
         self.push_block(BlockType::Global);
-        let statements = self.parse_statements(BlockType::Global);
+        let program = self.parse_global();
         self.pop_block();
-        statements
+        program
+    }
+
+    fn parse_global(&mut self) -> Node {
+        let mut functions = Vec::new();
+        let mut coroutines = Vec::new();
+
+        loop {
+            let token = match self.peek_token(){
+                Ok(token) => token,
+                Err(e) => {
+                    self.errors.push(e);
+                    break;
+                },
+            };
+            if matches!(&token.kind, TokenKind::EOF) {
+                break;
+            }
+
+            if matches!(&token.kind, TokenKind::DocComment(_)) {
+                match self.parse_doc_comment(&token) {
+                    Ok(result) => {
+                        match result {
+                            Some(_) => {
+                                self.errors.push(
+                                    ErrorContext::new(
+                                        ErrorCode::Parse006,
+                                        token.row, token.col,
+                                        vec![("statement", "プロセスコメント"), ("block", "関数")],
+                                    )
+                                );
+                            },
+                            None => {},
+                        }
+                        continue;
+                    },
+                    Err(e) => {
+                        self.errors.push(e);
+                        break;
+                    }
+                }
+            }
+
+            match token.kind {
+                TokenKind::DeclarationKeyword(keyword) => {
+                    match keyword {
+                        DeclarationKeyword::Function => {
+                            let function = match self.parse_function_definition() {
+                                Ok(node) => node,
+                                Err(e) => {
+                                    self.errors.push(e);
+                                    break;
+                                },
+                            };
+                            functions.push(function);
+                        },
+                        DeclarationKeyword::Coroutine => {
+                            let coroutine = match self.parse_coroutine_definition() {
+                                Ok(node) => node,
+                                Err(e) => {
+                                    self.errors.push(e);
+                                    break;
+                                }
+                            };
+                            coroutines.push(coroutine);
+                        },
+                        _ => {
+                            self.errors.push(
+                                ErrorContext::new(
+                                    ErrorCode::Parse006,
+                                    token.row, token.col,
+                                    vec![("statement", &keyword.to_string()), ("block", "関数")],
+                                )
+                            );
+                            break;
+                        },
+                    }
+                },
+                _ => {
+                    self.errors.push(
+                        ErrorContext::new(
+                            ErrorCode::Parse002,
+                            token.row, token.col,
+                            vec![("token", &token.kind.to_string())],
+                        )
+                    );
+                    break;
+                },
+            }
+        
+            self.doc_comment = String::new();
+        }
+
+        Node::Program { functions, coroutines }
+    }
+
+    fn parse_function_definition(&mut self) -> Result<Node, ErrorContext> {
+        let token = self.next_token()?;
+        if self.block_stack.last() != Some(&BlockType::Global) {
+            self.errors.push(ErrorContext::new(
+                ErrorCode::Parse006,
+                token.row, token.col,
+                vec![
+                    ("statement", "function"),
+                    ("block", "global_block"),
+                ],
+            ))
+        }
+
+        let doc = self.get_doc_comment();
+        
+        let token = self.next_token()?;
+        let function_name = match token.kind {
+            TokenKind::Identifier(name) => name,
+            _ => {
+                self.errors.push(ErrorContext::new(
+                    ErrorCode::Parse005,
+                    token.row, token.col,
+                    vec![("token", "関数名")]
+                ));
+                "None".to_string()
+            },
+        };
+        self.check_next_token(TokenKind::LParen);
+
+        // 引数処理
+        let mut parameters = Vec::new();
+        loop {
+            let token = self.peek_token()?;
+            if token.kind == TokenKind::RParen { break; }
+
+            let token = self.next_token()?;
+            let name = match token.kind {
+                TokenKind::Identifier(name) => name,
+                _ => {
+                    self.errors.push(ErrorContext::new(
+                        ErrorCode::Parse002,
+                        token.row, token.col,
+                        vec![("token", &token.kind.to_string())],
+                    ));
+                    "None".to_string()
+                },
+            };
+            
+            self.check_next_token(TokenKind::Colon);
+            
+            let type_token = self.next_token()?;
+            let variable_type = match type_token.kind {
+                TokenKind::TypeName(type_name) => type_name,
+                _ => {
+                    self.errors.push(ErrorContext::new(
+                        ErrorCode::Parse002,
+                        type_token.row, type_token.col,
+                        vec![("token", &type_token.kind.to_string())],
+                    ));
+                    TypeName::Bool
+                },
+            };
+            
+            let token = self.peek_token()?;
+            match token.kind {
+                TokenKind::Comma => { self.next_token()?; },
+                TokenKind::RParen => {
+                    let param = Node::VariableDeclaration {
+                        name,
+                        variable_type,
+                        initializer: None,
+                        doc: None,
+                    };
+                    parameters.push(param);
+                    break;
+                },
+                _ => {
+                    self.errors.push(ErrorContext::new(
+                        ErrorCode::Parse002,
+                        token.row, token.col,
+                        vec![("token", &token.kind.to_string())],
+                    ));
+                    self.next_token()?;
+                },
+            }
+
+            let param = Node::VariableDeclaration {
+                name,
+                variable_type,
+                initializer: None,
+                doc: None,
+            };
+            parameters.push(param);
+        }
+
+        self.check_next_token(TokenKind::RParen);
+        self.check_next_token(TokenKind::LBrace);
+        
+        self.push_block(BlockType::Function);
+        let block = self.parse_statements(BlockType::Function);
+        self.pop_block();
+
+        self.check_next_token(TokenKind::RBrace);
+
+        Ok(Node::FunctionDefinition {
+            name: function_name,
+            parameters,
+            block: Box::new(block),
+            doc,
+        })
+
+    }
+
+    fn parse_coroutine_definition(&mut self) -> Result<Node, ErrorContext> {
+        let token = self.next_token()?;
+        if self.block_stack.last() != Some(&BlockType::Global) {
+            self.errors.push(ErrorContext::new(
+                ErrorCode::Parse006,
+                token.row, token.col,
+                vec![
+                    ("statement", "coroutine"),
+                    ("block", "global_block"),
+                ],
+            ))
+        }
+
+        let doc = self.get_doc_comment();
+        
+        let token = self.next_token()?;
+        let coroutine_name = match token.kind {
+            TokenKind::Identifier(name) => name,
+            _ => {
+                self.errors.push(ErrorContext::new(
+                    ErrorCode::Parse005,
+                    token.row, token.col,
+                    vec![("token", "コルーチン名")]
+                ));
+                "None".to_string()
+            },
+        };
+        self.check_next_token(TokenKind::LParen);
+
+        self.check_next_token(TokenKind::RParen);
+        self.check_next_token(TokenKind::LBrace);
+        
+        self.push_block(BlockType::Coroutine);
+        let block = self.parse_statements(BlockType::Coroutine);
+        self.pop_block();
+
+        self.check_next_token(TokenKind::RBrace);
+        Ok(Node::CoroutineDefinition { name: coroutine_name, block: Box::new(block), doc })
     }
 
     fn parse_statements(&mut self, block_type: BlockType) -> Node {
@@ -63,7 +309,7 @@ impl Parser {
 
             let token = token.clone();
             if matches!(&token.kind, TokenKind::DocComment(_)) {
-                match self.parse_doc_comment(token) {
+                match self.parse_doc_comment(&token) {
                     Ok(result) => {
                         match result {
                             Some(node) => statements.push(node),
@@ -110,7 +356,7 @@ impl Parser {
                     )),
                 }
             },
-            TokenKind::DeclarationKeyword(keyword) => self.parse_declaration_keyword(keyword),
+            TokenKind::DeclarationKeyword(keyword) => self.parse_declaration_keyword(keyword, token.row, token.col),
             TokenKind::FunctionControl(keyword) => {
                 if !self.block_stack.contains(&BlockType::Function) {
                     self.errors.push(ErrorContext::new(
@@ -308,7 +554,7 @@ impl Parser {
         }
     }
 
-    fn parse_declaration_keyword(&mut self, keyword: DeclarationKeyword) -> Result<Node, ErrorContext> {
+    fn parse_declaration_keyword(&mut self, keyword: DeclarationKeyword, row: u32, col: u32) -> Result<Node, ErrorContext> {
         match keyword {
             DeclarationKeyword::Let => {
                 self.next_token()?;
@@ -365,8 +611,6 @@ impl Parser {
                     doc: self.get_doc_comment(),
                 });
             },
-            DeclarationKeyword::Function => self.parse_function_definition(),
-            DeclarationKeyword::Coroutine => self.parse_coroutine_definition(),
             DeclarationKeyword::Coro => {
                 self.next_token()?;
                 let name_token = self.next_token()?;
@@ -401,160 +645,14 @@ impl Parser {
                     },
                 }
             },
-        }
-    }
-
-    fn parse_function_definition(&mut self) -> Result<Node, ErrorContext> {
-        let token = self.next_token()?;
-        if self.block_stack.last() != Some(&BlockType::Global) {
-            self.errors.push(ErrorContext::new(
-                ErrorCode::Parse006,
-                token.row, token.col,
-                vec![
-                    ("statement", "function"),
-                    ("block", "global_block"),
-                ],
-            ))
-        }
-
-        let doc = self.get_doc_comment();
-        
-        let token = self.next_token()?;
-        let function_name = match token.kind {
-            TokenKind::Identifier(name) => name,
             _ => {
-                self.errors.push(ErrorContext::new(
-                    ErrorCode::Parse005,
-                    token.row, token.col,
-                    vec![("token", "関数名")]
-                ));
-                "None".to_string()
-            },
-        };
-        self.check_next_token(TokenKind::LParen);
-
-        // 引数処理
-        let mut parameters = Vec::new();
-        loop {
-            let token = self.peek_token()?;
-            if token.kind == TokenKind::RParen { break; }
-
-            let token = self.next_token()?;
-            let name = match token.kind {
-                TokenKind::Identifier(name) => name,
-                _ => {
-                    self.errors.push(ErrorContext::new(
-                        ErrorCode::Parse002,
-                        token.row, token.col,
-                        vec![("token", &token.kind.to_string())],
-                    ));
-                    "None".to_string()
-                },
-            };
-            
-            self.check_next_token(TokenKind::Colon);
-            
-            let type_token = self.next_token()?;
-            let variable_type = match type_token.kind {
-                TokenKind::TypeName(type_name) => type_name,
-                _ => {
-                    self.errors.push(ErrorContext::new(
-                        ErrorCode::Parse002,
-                        type_token.row, type_token.col,
-                        vec![("token", &type_token.kind.to_string())],
-                    ));
-                    TypeName::Bool
-                },
-            };
-            
-            let token = self.peek_token()?;
-            match token.kind {
-                TokenKind::Comma => { self.next_token()?; },
-                TokenKind::RParen => {
-                    let param = Node::VariableDeclaration {
-                        name,
-                        variable_type,
-                        initializer: None,
-                        doc: None,
-                    };
-                    parameters.push(param);
-                    break;
-                },
-                _ => {
-                    self.errors.push(ErrorContext::new(
-                        ErrorCode::Parse002,
-                        token.row, token.col,
-                        vec![("token", &token.kind.to_string())],
-                    ));
-                    self.next_token()?;
-                },
+                Err(ErrorContext::new(
+                    ErrorCode::Parse006,
+                    row, col,
+                    vec![("statement", &keyword.to_string()), ("block", "global block")],
+                ))
             }
-
-            let param = Node::VariableDeclaration {
-                name,
-                variable_type,
-                initializer: None,
-                doc: None,
-            };
-            parameters.push(param);
         }
-
-        self.check_next_token(TokenKind::RParen);
-        self.check_next_token(TokenKind::LBrace);
-        
-        self.push_block(BlockType::Function);
-        let block = self.parse_statements(BlockType::Function);
-        self.pop_block();
-
-        self.check_next_token(TokenKind::RBrace);
-
-        Ok(Node::FunctionDefinition {
-            name: function_name,
-            parameters,
-            block: Box::new(block),
-            doc,
-        })
-
-    }
-
-    fn parse_coroutine_definition(&mut self) -> Result<Node, ErrorContext> {
-        let token = self.next_token()?;
-        if self.block_stack.last() != Some(&BlockType::Global) {
-            self.errors.push(ErrorContext::new(
-                ErrorCode::Parse006,
-                token.row, token.col,
-                vec![
-                    ("statement", "coroutine"),
-                    ("block", "global_block"),
-                ],
-            ))
-        }
-
-        let doc = self.get_doc_comment();
-        
-        let token = self.next_token()?;
-        let coroutine_name = match token.kind {
-            TokenKind::Identifier(name) => name,
-            _ => {
-                self.errors.push(ErrorContext::new(
-                    ErrorCode::Parse005,
-                    token.row, token.col,
-                    vec![("token", "コルーチン名")]
-                ));
-                "None".to_string()
-            },
-        };
-        self.check_next_token(TokenKind::LParen);
-
-        self.check_next_token(TokenKind::RParen);
-        self.check_next_token(TokenKind::LBrace);
-        
-        self.push_block(BlockType::Coroutine);
-        let block = self.parse_statements(BlockType::Coroutine);
-        self.pop_block();
-
-        self.check_next_token(TokenKind::RBrace);
-        Ok(Node::CoroutineDefinition { name: coroutine_name, block: Box::new(block), doc })
     }
 
     /// 引数の構文解析
@@ -910,18 +1008,18 @@ impl Parser {
         }
     }
 
-    fn parse_doc_comment(&mut self, token: Token) -> Result<Option<Node>, ErrorContext> {
-        if let TokenKind::DocComment(string) = token.kind {
+    fn parse_doc_comment(&mut self, token: &Token) -> Result<Option<Node>, ErrorContext> {
+        if let TokenKind::DocComment(string) = &token.kind {
             self.next_token()?;
             if string.starts_with("@process") {
-                let mut process_comment = string;
+                let mut process_comment = string.to_string();
                 while let TokenKind::DocComment(string) = self.peek_token()?.kind {
                     process_comment = format!("{}\n{}", process_comment, string);
                     self.next_token()?;
                 }
                 return Ok(Some(Node::ProcessComment { comment: process_comment }));
             } else {
-                let mut doc_comment = string;
+                let mut doc_comment = string.to_string();
                 while let TokenKind::DocComment(string) = self.peek_token()?.kind {
                     doc_comment = format!("{}\n{}", doc_comment, string);
                     self.next_token()?;

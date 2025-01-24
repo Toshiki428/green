@@ -40,6 +40,72 @@ impl Interpreter {
         }
     }
 
+    fn execute_program(&mut self, node: &Node) -> Result<(), String> {
+        match node {
+            Node::Program { functions, coroutines } => {
+                for function in functions {
+                    match function {
+                        Node::FunctionDefinition { name, parameters, block, doc:_ } => {
+                            let mut variables = Vec::new();
+                            for param in parameters {
+                                match param {
+                                    Node::VariableDeclaration { name, variable_type, initializer:_, doc:_ } => {
+                                        variables.push((name.to_string(), Type::from_keyword(variable_type)));
+                                    },
+                                    _ => return Err(ErrorMessage::global().get_error_message(
+                                        &ErrorContext::new(
+                                            ErrorCode::Runtime011,
+                                            0, 0,
+                                            vec![("node", &format!("{:?}", function))],
+                                        )
+                                    )?),
+                                }
+                            }
+                            self.functions.insert(name.to_string(), (variables, block.clone()));
+                        },
+                        _ => {
+                            return Err(ErrorMessage::global().get_error_message(
+                                &ErrorContext::new(ErrorCode::Runtime003, 0, 0, vec![("node", &format!("{:?}", function))])
+                            )?)
+                        }
+                    }
+                }
+
+                for coroutine in coroutines {
+                    match coroutine {
+                        Node::CoroutineDefinition { name, block, doc:_ } => {
+                            self.coroutine_manager.add_def(name, block);
+                        },
+                        _ => {
+                            return Err(ErrorMessage::global().get_error_message(
+                                &ErrorContext::new(ErrorCode::Runtime003, 0, 0, vec![("node", &format!("{:?}", coroutine))])
+                            )?)
+                        }
+                    }
+                }
+                
+                if let Some((_, block)) = self.functions.get("main").cloned() {
+                    self.execute(&block)?;
+                } else {
+                    return Err(ErrorMessage::global().get_error_message(
+                        &ErrorContext::new(
+                            ErrorCode::Runtime002,
+                            0, 0,
+                            vec![("function", "main")],
+                        )
+                    )?);
+                }
+            },
+            _ => {
+                return Err(ErrorMessage::global().get_error_message(
+                    &ErrorContext::new(ErrorCode::Runtime003, 0, 0, vec![("node", &format!("{:?}", node))])
+                )?)
+            },
+        }
+
+        Ok(())
+    }
+
     /// プログラムの実行
     fn execute(&mut self, node: &Node) -> Result<EvalFlow<GreenValue>, String> {
         match &node {
@@ -91,32 +157,12 @@ impl Interpreter {
             Node::LoopStatement { condition_node, block } => {
                 return self.evaluate_loop_statement(condition_node, block);
             },
-            Node::FunctionDefinition { name, parameters, block, doc:_ } => {
-                let mut variables = Vec::new();
-                for param in parameters {
-                    match param {
-                        Node::VariableDeclaration { name, variable_type, initializer:_, doc:_ } => {
-                            variables.push((name.to_string(), Type::from_keyword(variable_type)));
-                        },
-                        _ => return Err(ErrorMessage::global().get_error_message(
-                            &ErrorContext::new(
-                                ErrorCode::Runtime011,
-                                0, 0,
-                                vec![("node", &format!("{:?}", node))],
-                            )
-                        )?),
-                    }
-                }
-                self.functions.insert(name.to_string(), (variables, block.clone()));
-            },
+            
             Node::ReturnStatement { assignalbe } => {
                 let return_value = self.evaluate_assignable(assignalbe)?;
                 return Ok(EvalFlow::Return(return_value));
             },
 
-            Node::CoroutineDefinition { name, block, doc:_ } => {
-                self.coroutine_manager.add_def(name, block);
-            },
             Node::CoroutineInstantiation { task_name, coroutine_name } => {
                 match self.coroutine_manager.add_task(task_name, coroutine_name) {
                     Ok(_) => {},
@@ -632,6 +678,6 @@ impl Interpreter {
 
 pub fn execute(node: &Node) -> Result<(), String> {
     let mut interpreter = Interpreter::new();
-    interpreter.execute(node)?;
+    interpreter.execute_program(node)?;
     Ok(())
 }
