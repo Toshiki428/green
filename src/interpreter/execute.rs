@@ -165,6 +165,8 @@ impl Interpreter {
                 }
             },
 
+            Node::ProcessComment { comment:_ } => {},
+
             Node::Break => {
                 return Ok(EvalFlow::Break);
             },

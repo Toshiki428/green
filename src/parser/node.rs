@@ -100,6 +100,10 @@ pub enum Node {
         assignalbe: Box<Node>,
     },
 
+    ProcessComment {
+        comment: String,
+    },
+
     Break,
     Continue,
     Error,
@@ -232,13 +236,17 @@ impl Node {
                     self.indent(depth+1);
                     println!("DocComment: {}", comment);
                 }
-                
+
                 block.print(depth+1);
             },
             Self::ReturnStatement { assignalbe } => {
                 println!("Return:");
                 assignalbe.print(depth+1);
             },
+
+            Self::ProcessComment { comment } => {
+                println!("ProcessComment: {}", comment);
+            }
 
             Self::Break => println!("break"),
             Self::Continue => println!("continue"),

@@ -150,7 +150,15 @@ impl<'a> Lexer<'a> {
                 self.next_char();
                 match self.chars.peek() {
                     Some('/') => {
-                        self.next_char();
+                        self.next_char(); // 3つ目の`/`をスキップ
+                        
+                        match self.chars.peek() {
+                            Some(' ') => {
+                                self.chars.next();
+                            },
+                            _ => {},
+                        }
+
                         let mut doc_comment = String::new();
                         while let Some(&c) = self.chars.peek() {
                             self.next_char();
@@ -160,7 +168,6 @@ impl<'a> Lexer<'a> {
                                 _ => { doc_comment.push(c) },
                             }
                         }
-                        // 変数や関数を実数したとき改めて実装
                         token_kind = TokenKind::DocComment(doc_comment);
                     },
                     _ => {

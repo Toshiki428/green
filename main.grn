@@ -1,6 +1,7 @@
 /// カウント用の変数
 /// int型
 let i: int = 0;
+/// @process 10回繰り返す
 while (i < 10) {
     print(i);
     i = i+1;

@@ -64,7 +64,13 @@ impl Parser {
             let token = token.clone();
             if matches!(&token.kind, TokenKind::DocComment(_)) {
                 match self.parse_doc_comment(token) {
-                    Ok(_) => continue,
+                    Ok(result) => {
+                        match result {
+                            Some(node) => statements.push(node),
+                            None => {},
+                        }
+                        continue;
+                    },
                     Err(e) => {
                         self.errors.push(e);
                         break;
@@ -904,12 +910,26 @@ impl Parser {
         }
     }
 
-    fn parse_doc_comment(&mut self, token: Token) -> Result<(), ErrorContext> {
+    fn parse_doc_comment(&mut self, token: Token) -> Result<Option<Node>, ErrorContext> {
         if let TokenKind::DocComment(string) = token.kind {
-            self.doc_comment = format!("{}\n{}", self.doc_comment, string);
             self.next_token()?;
+            if string.starts_with("@process") {
+                let mut process_comment = string;
+                while let TokenKind::DocComment(string) = self.peek_token()?.kind {
+                    process_comment = format!("{}\n{}", process_comment, string);
+                    self.next_token()?;
+                }
+                return Ok(Some(Node::ProcessComment { comment: process_comment }));
+            } else {
+                let mut doc_comment = string;
+                while let TokenKind::DocComment(string) = self.peek_token()?.kind {
+                    doc_comment = format!("{}\n{}", doc_comment, string);
+                    self.next_token()?;
+                }
+                self.doc_comment = doc_comment;
+            }
         }
-        Ok(())
+        Ok(None)
     }
 
     fn get_doc_comment(&mut self) -> Option<String> {
