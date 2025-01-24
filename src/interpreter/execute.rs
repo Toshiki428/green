@@ -68,16 +68,8 @@ impl Interpreter {
             Node::FunctionCall { name: _, arguments: _ } => {
                 self.execute_function(node)?;
             },
-            Node::VariableDeclaration { name, variable_type, initializer } => {
+            Node::VariableDeclaration { name, variable_type, initializer, doc: _ } => {
                 let value_type = Type::from_keyword(variable_type);
-                match value_type {
-                    Type::Coroutine => {
-
-                    },
-                    _ => {
-
-                    },
-                }
                 let value = match initializer {
                     Some(expression) => self.evaluate_assignable(expression)?.value,
                     None => LiteralValue::Null,
@@ -99,11 +91,11 @@ impl Interpreter {
             Node::LoopStatement { condition_node, block } => {
                 return self.evaluate_loop_statement(condition_node, block);
             },
-            Node::FunctionDefinition { name, parameters, block } => {
+            Node::FunctionDefinition { name, parameters, block, doc:_ } => {
                 let mut variables = Vec::new();
                 for param in parameters {
                     match param {
-                        Node::VariableDeclaration { name, variable_type, initializer:_ } => {
+                        Node::VariableDeclaration { name, variable_type, initializer:_, doc:_ } => {
                             variables.push((name.to_string(), Type::from_keyword(variable_type)));
                         },
                         _ => return Err(ErrorMessage::global().get_error_message(
@@ -122,7 +114,7 @@ impl Interpreter {
                 return Ok(EvalFlow::Return(return_value));
             },
 
-            Node::CoroutineDefinition { name, block } => {
+            Node::CoroutineDefinition { name, block, doc:_ } => {
                 self.coroutine_manager.add_def(name, block);
             },
             Node::CoroutineInstantiation { task_name, coroutine_name } => {

@@ -1,7 +1,7 @@
 use std::{iter::Peekable, vec::IntoIter};
+use super::node::Node;
 use crate::{
     lexer::token::{Token, TokenKind},
-    parser::node::Node,
     common::{
         keyword::*,
         operator::*,
@@ -17,6 +17,7 @@ struct Parser {
     tokens: Peekable<IntoIter<Token>>,
     block_stack: Vec<BlockType>,
     errors: Vec<ErrorContext>,
+    doc_comment: String,
 }
 
 impl Parser {
@@ -25,14 +26,15 @@ impl Parser {
             tokens: tokens.into_iter().peekable(),
             block_stack: Vec::new(),
             errors: Vec::new(),
+            doc_comment: String::new(),
         }
     }
 
     /// ルートの構文解析
     fn parse_program(&mut self) -> Node {
-        self.block_stack.push(BlockType::Global);
+        self.push_block(BlockType::Global);
         let statements = self.parse_statements(BlockType::Global);
-        self.block_stack.pop();
+        self.pop_block();
         statements
     }
 
@@ -60,6 +62,16 @@ impl Parser {
             }
 
             let token = token.clone();
+            if matches!(&token.kind, TokenKind::DocComment(_)) {
+                match self.parse_doc_comment(token) {
+                    Ok(_) => continue,
+                    Err(e) => {
+                        self.errors.push(e);
+                        break;
+                    }
+                }
+            }
+
             let statement = self.parse_statement(token);
             match statement {
                 Ok(node) => statements.push(node),
@@ -68,6 +80,7 @@ impl Parser {
                     break;
                 },
             }
+            self.doc_comment = String::new();
         }
 
         return Node::Block {
@@ -171,6 +184,7 @@ impl Parser {
                     },
                 }
             },
+
             _ => return Err(ErrorContext::new(
                 ErrorCode::Parse002,
                 token.row, token.col,
@@ -195,9 +209,9 @@ impl Parser {
         self.check_next_token(TokenKind::RParen);
         self.check_next_token(TokenKind::LBrace);
 
-        self.block_stack.push(BlockType::Conditional);
+        self.push_block(BlockType::Conditional);
         let then_block = self.parse_statements(BlockType::Conditional);
-        self.block_stack.pop();
+        self.pop_block();
 
         self.check_next_token(TokenKind::RBrace);
 
@@ -206,9 +220,9 @@ impl Parser {
                 self.next_token()?;
                 self.check_next_token(TokenKind::LBrace);
         
-                self.block_stack.push(BlockType::Conditional);
+                self.push_block(BlockType::Conditional);
                 let else_block = self.parse_statements(BlockType::Conditional);
-                self.block_stack.pop();
+                self.pop_block();
         
                 self.check_next_token(TokenKind::RBrace);
 
@@ -240,9 +254,9 @@ impl Parser {
 
         self.check_next_token(TokenKind::LBrace);
 
-        self.block_stack.push(BlockType::Loop);
+        self.push_block(BlockType::Loop);
         let block = self.parse_statements(BlockType::Loop);
-        self.block_stack.pop();
+        self.pop_block();
 
         self.check_next_token(TokenKind::RBrace);
 
@@ -342,6 +356,7 @@ impl Parser {
                     name: name.to_string(),
                     variable_type,
                     initializer,
+                    doc: self.get_doc_comment(),
                 });
             },
             DeclarationKeyword::Function => self.parse_function_definition(),
@@ -395,6 +410,8 @@ impl Parser {
                 ],
             ))
         }
+
+        let doc = self.get_doc_comment();
         
         let token = self.next_token()?;
         let function_name = match token.kind {
@@ -452,6 +469,7 @@ impl Parser {
                         name,
                         variable_type,
                         initializer: None,
+                        doc: None,
                     };
                     parameters.push(param);
                     break;
@@ -470,6 +488,7 @@ impl Parser {
                 name,
                 variable_type,
                 initializer: None,
+                doc: None,
             };
             parameters.push(param);
         }
@@ -477,9 +496,9 @@ impl Parser {
         self.check_next_token(TokenKind::RParen);
         self.check_next_token(TokenKind::LBrace);
         
-        self.block_stack.push(BlockType::Function);
+        self.push_block(BlockType::Function);
         let block = self.parse_statements(BlockType::Function);
-        self.block_stack.pop();
+        self.pop_block();
 
         self.check_next_token(TokenKind::RBrace);
 
@@ -487,6 +506,7 @@ impl Parser {
             name: function_name,
             parameters,
             block: Box::new(block),
+            doc,
         })
 
     }
@@ -503,6 +523,8 @@ impl Parser {
                 ],
             ))
         }
+
+        let doc = self.get_doc_comment();
         
         let token = self.next_token()?;
         let coroutine_name = match token.kind {
@@ -521,12 +543,12 @@ impl Parser {
         self.check_next_token(TokenKind::RParen);
         self.check_next_token(TokenKind::LBrace);
         
-        self.block_stack.push(BlockType::Coroutine);
+        self.push_block(BlockType::Coroutine);
         let block = self.parse_statements(BlockType::Coroutine);
-        self.block_stack.pop();
+        self.pop_block();
 
         self.check_next_token(TokenKind::RBrace);
-        Ok(Node::CoroutineDefinition { name: coroutine_name, block: Box::new(block) })
+        Ok(Node::CoroutineDefinition { name: coroutine_name, block: Box::new(block), doc })
     }
 
     /// 引数の構文解析
@@ -882,6 +904,22 @@ impl Parser {
         }
     }
 
+    fn parse_doc_comment(&mut self, token: Token) -> Result<(), ErrorContext> {
+        if let TokenKind::DocComment(string) = token.kind {
+            self.doc_comment = format!("{}\n{}", self.doc_comment, string);
+            self.next_token()?;
+        }
+        Ok(())
+    }
+
+    fn get_doc_comment(&mut self) -> Option<String> {
+        if self.doc_comment == "" {
+            None
+        } else {
+            Some(self.doc_comment.clone())
+        }
+    }
+
     fn peek_token(&mut self) -> Result<Token, ErrorContext> {
         match self.tokens.peek() {
             Some(token) => Ok(token.clone()),
@@ -949,6 +987,16 @@ impl Parser {
                 vec![]
             ))
         }
+    }
+
+    fn push_block(&mut self, block_type: BlockType) {
+        self.block_stack.push(block_type);
+        self.doc_comment = String::new();
+    }
+
+    fn pop_block(&mut self) {
+        self.block_stack.pop();
+        self.doc_comment = String::new();
     }
 }
 

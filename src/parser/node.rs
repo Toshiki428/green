@@ -26,6 +26,7 @@ pub enum Node {
     CoroutineDefinition {
         name: String,
         block: Box<Node>,
+        doc: Option<String>,
     },
     /// コルーチンのインスタンス化
     CoroutineInstantiation {
@@ -43,6 +44,7 @@ pub enum Node {
         name: String,
         variable_type: TypeName,
         initializer: Option<Box<Node>>,
+        doc: Option<String>,
     },
     /// 変数代入
     VariableAssignment {
@@ -91,11 +93,13 @@ pub enum Node {
         name: String,
         parameters: Vec<Node>,
         block: Box<Node>,
+        doc: Option<String>,
     },
     /// return文
     ReturnStatement {
         assignalbe: Box<Node>,
     },
+
     Break,
     Continue,
     Error,
@@ -137,8 +141,13 @@ impl Node {
             Self::Yield => {
                 println!("Yield");
             },
-            Self::VariableDeclaration { name, variable_type, initializer } => {
+            Self::VariableDeclaration { name, variable_type, initializer, doc } => {
                 println!("VariableDeaclaration: {} ({})", name, variable_type.to_string());
+                if let Some(comment) = doc {
+                    self.indent(depth+1);
+                    println!("DocComment: {}", comment);
+                }
+
                 if let Some(expression) = initializer {
                     self.indent(depth+1);
                     println!("initializer:");
@@ -205,21 +214,32 @@ impl Node {
                 condition_node.print(depth+2);
                 block.print(depth+2);
             },
-            Self::FunctionDefinition { name, parameters, block } => {
+            Self::FunctionDefinition { name, parameters, block, doc } => {
                 println!("FunctionDefinition: {}", name);
+                if let Some(comment) = doc {
+                    self.indent(depth+1);
+                    println!("DocComment: {}", comment);
+                }
+                
+                block.print(depth+1);
                 for param in parameters {
                     param.print(depth+1);
                 }
-                block.print(depth+1);
             },
-            Self::CoroutineDefinition { name, block } => {
+            Self::CoroutineDefinition { name, block, doc } => {
                 println!("CoroutineDefinition: {}", name);
+                if let Some(comment) = doc {
+                    self.indent(depth+1);
+                    println!("DocComment: {}", comment);
+                }
+                
                 block.print(depth+1);
             },
             Self::ReturnStatement { assignalbe } => {
                 println!("Return:");
                 assignalbe.print(depth+1);
             },
+
             Self::Break => println!("break"),
             Self::Continue => println!("continue"),
             Self::Error => println!("Error"),

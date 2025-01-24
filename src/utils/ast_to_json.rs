@@ -32,7 +32,7 @@ pub fn ast_to_json(ast: Node) -> serde_json::Result<()> {
         Node::Block { block_type:_, statements } => {
             for statement in statements {
                 match statement {
-                    Node::FunctionDefinition { name, parameters:_, block:_ } => {
+                    Node::FunctionDefinition { name, parameters:_, block:_ , doc:_} => {
                         definitions.push(Definition {
                             name,
                             r#type: "function".to_string(),

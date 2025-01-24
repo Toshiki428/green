@@ -196,7 +196,7 @@ impl<'a> Lexer<'a> {
 
         match token_kind {
             TokenKind::Comment => {},  // Commentはtokensに追加しない
-            TokenKind::DocComment(_) => {},  // 一時的にDocCommentも追加しない
+            TokenKind::DocComment(_) => {self.push_token_with_location(token_kind, start_row, start_col);},  // 一時的にDocCommentも追加しない
             TokenKind::ArithmeticOperator(_) => {self.push_token_with_location(token_kind, start_row, start_col);},
             _ => { self.push_token(token_kind); },
         }
