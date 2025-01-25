@@ -3,7 +3,7 @@ use clap::Parser;
 use green::{
     cli, error::{
         error_code::ErrorCode, error_context::ErrorContext, error_message::ErrorMessage
-    },interpreter::execute, lexer::lexical_analyzer, parser::ast, utils::{ast_to_json::ast_to_json, misc}
+    },interpreter::execute, lexer::lexical_analyzer, parser::ast, utils::{ast_to_json::JsonData, misc}
 };
 
 fn main() -> Result<(), String> {
@@ -39,7 +39,6 @@ fn main() -> Result<(), String> {
 
     let (ast, errors) = ast::parse(tokens);
 
-    ast.print(0);
     if !errors.is_empty() {
         error_flag = true;
     }
@@ -53,7 +52,7 @@ fn main() -> Result<(), String> {
     }
 
     if cli.analyze {
-        let _ = ast_to_json(ast);
+        let _ = JsonData::new(ast);
     } else {
         if let Err(e) = execute::execute(&ast) {
             return Err(ErrorMessage::global().get_error_message(
