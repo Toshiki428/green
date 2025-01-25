@@ -11,12 +11,27 @@ pub enum Node {
         functions: Vec<Node>,
         coroutines: Vec<Node>,
     },
+
+    /// 関数定義
+    FunctionDefinition {
+        name: String,
+        parameters: Vec<Node>,
+        block: Box<Node>,
+        doc: Option<String>,
+    },
+    /// コルーチン定義
+    CoroutineDefinition {
+        name: String,
+        block: Box<Node>,
+        doc: Option<String>,
+    },
     
-    /// ブロックのノード
+    /// ブロックのノード（関数、コルーチン、ループ、条件分岐）
     Block {
         block_type: BlockType,
         statements: Vec<Node>,
     },
+
     /// 関数呼び出し（戻り値なし）
     FunctionCall { 
         name: String,
@@ -28,17 +43,12 @@ pub enum Node {
         arguments: Vec<Node>,
     },
 
-    /// コルーチン定義
-    CoroutineDefinition {
-        name: String,
-        block: Box<Node>,
-        doc: Option<String>,
-    },
     /// コルーチンのインスタンス化
     CoroutineInstantiation {
         task_name: String,
         coroutine_name: String,
     },
+
     /// コルーチンの再開
     CoroutineResume {
         task_name: String,
@@ -61,6 +71,34 @@ pub enum Node {
     Variable {
         name: String,
     },
+
+    /// If文
+    IfStatement {
+        condition_node: Box<Node>,
+        then_block: Box<Node>,
+        else_block: Option<Box<Node>>,
+    },
+    /// ループ文
+    LoopStatement {
+        condition_node: Box<Node>,
+        block: Box<Node>,
+    },
+
+    /// return文
+    ReturnStatement {
+        assignalbe: Box<Node>,
+    },
+
+    ProcessComment {
+        comment: String,
+    },
+
+    Break,
+    Continue,
+    Error,
+    
+    // --------------------
+
     /// 論理演算
     Logical {
         operator: Logical,
@@ -83,36 +121,6 @@ pub enum Node {
     Literal {
         value: LiteralValue,
     },
-    /// If文
-    IfStatement {
-        condition_node: Box<Node>,
-        then_block: Box<Node>,
-        else_block: Option<Box<Node>>,
-    },
-    /// ループ文
-    LoopStatement {
-        condition_node: Box<Node>,
-        block: Box<Node>,
-    },
-    /// 関数定義
-    FunctionDefinition {
-        name: String,
-        parameters: Vec<Node>,
-        block: Box<Node>,
-        doc: Option<String>,
-    },
-    /// return文
-    ReturnStatement {
-        assignalbe: Box<Node>,
-    },
-
-    ProcessComment {
-        comment: String,
-    },
-
-    Break,
-    Continue,
-    Error,
 }
 
 impl Node {
