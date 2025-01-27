@@ -18,9 +18,13 @@ function main() {
     print(test_continue(15, 1));
 
     coro task1 = test_coroutine();
+    coro task2 = test_coroutine();
     resume task1;
     print("A");
+    resume task2;
     resume task1;
+    print("B");
+    resume task2;
 }
 
 /// return句を試すための関数
@@ -67,10 +71,10 @@ function test_continue(a:int, b: int) {
 }
 
 /// コルーチン
-/// 2回「10」を返す
+/// 1回目：10、2回目：20、を返す
 coroutine test_coroutine() {
     let a: int = 10;
     print(a);
     yield;
-    print(a);
+    print(a+10);
 }

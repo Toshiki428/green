@@ -19,24 +19,24 @@ impl ErrorMessage {
     }
     
     /// エラーメッセージの取得
-    pub fn get_error_message(&self, error: &ErrorContext) -> Result<String, String> {
+    pub fn get_error_message(&self, error: ErrorContext) -> Result<String, String> {
         let code = error.error_code.to_string();
         if let Some(template) = self.error_message.get(&code).and_then(|v| v.as_str()) {
             let mut message = template.to_string();
             for (key, value) in &error.params {
                 message = message.replace(&format!("{{{}}}", key), value);
             }
+
+            if let Some(row) = &error.row {
+                message = message.replace(&"{row}", &row.to_string())
+            }
+            if let Some(col) = &error.col {
+                message = message.replace(&"{col}", &col.to_string())
+            }
+            
             Ok(message)
         } else {
             Err(format!("不正なエラーコード: {}", &code))
         }
-    }
-    
-    /// 場所を指定したエラーメッセージの取得
-    pub fn get_error_message_with_location(&self, error: ErrorContext) -> Result<String, String> {
-        let mut message = self.get_error_message(&error)?;
-        message = message.replace(&"{row}", &error.row.to_string());
-        message = message.replace(&"{col}", &error.col.to_string());
-        Ok(message)
     }
 }

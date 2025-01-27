@@ -3,7 +3,7 @@ use clap::Parser;
 use green::{
     cli, error::{
         error_code::ErrorCode, error_context::ErrorContext, error_message::ErrorMessage
-    },interpreter::execute, lexer::lexical_analyzer, parser::ast, utils::{ast_to_json::JsonData, misc}
+    },interpreter::execute, lexer::lexical_analyzer, parser::parser, utils::{ast_to_json::JsonData, misc}
 };
 
 fn main() -> Result<(), String> {
@@ -15,9 +15,9 @@ fn main() -> Result<(), String> {
         Ok(content) => content,
         Err(_) => {
             return Err(ErrorMessage::global().get_error_message(
-                &ErrorContext::new(
+                ErrorContext::new(
                     ErrorCode::Io001,
-                    0, 0,
+                    None, None,
                     vec![("file_name", &cli.file)],
                 )
             )?)
@@ -31,13 +31,13 @@ fn main() -> Result<(), String> {
     }
     if error_flag {
         for error in errors {
-            let error_msg = ErrorMessage::global().get_error_message_with_location(error)?;
+            let error_msg = ErrorMessage::global().get_error_message(error)?;
             println!("{}", error_msg);
         }
         return Err("error".to_string())
     }
 
-    let (ast, errors) = ast::parse(tokens);
+    let (ast, errors) = parser::parse(tokens);
 
     if !errors.is_empty() {
         error_flag = true;
@@ -45,20 +45,22 @@ fn main() -> Result<(), String> {
 
     if error_flag {
         for error in errors {
-            let error_msg = ErrorMessage::global().get_error_message_with_location(error)?;
+            let error_msg = ErrorMessage::global().get_error_message(error)?;
             println!("{}", error_msg);
         }
         return Err("error".to_string())
     }
+
+    ast.print(0);
 
     if cli.analyze {
         let _ = JsonData::new(ast);
     } else {
         if let Err(e) = execute::execute(&ast) {
             return Err(ErrorMessage::global().get_error_message(
-                &ErrorContext::new(
+                ErrorContext::new(
                     ErrorCode::Runtime001,
-                    0, 0,
+                    None, None,
                     vec![("message", &e)],
                 )
             )?)

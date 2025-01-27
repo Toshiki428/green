@@ -92,7 +92,7 @@ impl<'a> Lexer<'a> {
                 _ => {
                     self.errors.push(ErrorContext::new(
                         ErrorCode::Lex002,
-                        self.row, self.col,
+                        Some(self.row), Some(self.col),
                         vec![("char", &char.to_string())]
                     ));
                     self.next_char();
@@ -123,7 +123,7 @@ impl<'a> Lexer<'a> {
             return Err(
                 ErrorContext::new(
                     ErrorCode::Lex003,
-                    self.row, self.col,
+                    Some(self.row), Some(self.col),
                     vec![],
                 )
             );
@@ -251,7 +251,7 @@ impl<'a> Lexer<'a> {
             _ => return Err(
                 ErrorContext::new(
                     ErrorCode::Lex005,
-                    self.row, self.col,
+                    Some(self.row), Some(self.col),
                     vec![("operator", &operator)],
                 )
             ),
@@ -287,7 +287,7 @@ impl<'a> Lexer<'a> {
             },
             _ => return Err(ErrorContext::new(
                 ErrorCode::Lex005,
-                self.row, start_col,
+                Some(self.row), Some(start_col),
                 vec![("operator", &operator)],
             )),
         }
@@ -423,7 +423,7 @@ impl<'a> Lexer<'a> {
             Some(c) => Ok(c.clone()),
             None => Err(ErrorContext::new(
                 ErrorCode::Lex004,
-                self.row, self.col,
+                Some(self.row), Some(self.col),
                 vec![],
             ))
         }

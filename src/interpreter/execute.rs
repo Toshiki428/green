@@ -1,15 +1,12 @@
-use std::collections::HashMap;
-
 use super::{
-    coroutine::{CoroutineManager, CoroutineStatus},
-    environment::Environment,
+    coroutine::{CoroutineManager, CoroutineStatus}, function::FunctionManager, variable::VariableManager
 };
 use crate::{
     common::{
         operator::{ Arithmetic, BinaryLogical, Comparison, Logical, UnaryLogical},
         types::{GreenValue, LiteralValue, Type},
     },
-    parser::node::Node,
+    parser::node::{RootNode, GlobalNode, PrivateNode},
     error::{
         error_message::ErrorMessage,
         error_code::ErrorCode,
@@ -26,90 +23,90 @@ pub enum EvalFlow<T> {
 }
 
 struct Interpreter {
-    variables: Environment,
-    functions: HashMap<String, (Vec<(String, Type)>, Box<Node>)>,
+    variable_manager: VariableManager,
+    functions: FunctionManager,
     coroutine_manager: CoroutineManager,
 }
 
 impl Interpreter {
     fn new() -> Self {
         Self {
-            variables: Environment::new(),
-            functions: HashMap::new(),
+            variable_manager: VariableManager::new(),
+            functions: FunctionManager::new(),
             coroutine_manager: CoroutineManager::new(),
         }
     }
 
-    fn execute_program(&mut self, node: &Node) -> Result<(), String> {
-        match node {
-            Node::Program { functions, coroutines } => {
-                for function in functions {
-                    match function {
-                        Node::FunctionDefinition { name, parameters, block, doc:_ } => {
-                            let mut variables = Vec::new();
-                            for param in parameters {
-                                match param {
-                                    Node::VariableDeclaration { name, variable_type, initializer:_, doc:_ } => {
-                                        variables.push((name.to_string(), Type::from_keyword(variable_type)));
-                                    },
-                                    _ => return Err(ErrorMessage::global().get_error_message(
-                                        &ErrorContext::new(
-                                            ErrorCode::Runtime011,
-                                            0, 0,
-                                            vec![("node", &format!("{:?}", function))],
-                                        )
-                                    )?),
-                                }
-                            }
-                            self.functions.insert(name.to_string(), (variables, block.clone()));
-                        },
-                        _ => {
-                            return Err(ErrorMessage::global().get_error_message(
-                                &ErrorContext::new(ErrorCode::Runtime003, 0, 0, vec![("node", &format!("{:?}", function))])
-                            )?)
+    fn execute_program(&mut self, node: &RootNode) -> Result<(), String> {
+        let RootNode::Program { functions, coroutines } = node;
+        for function in functions {
+            match function {
+                GlobalNode::FunctionDefinition { name, parameters, block, doc:_ } => {
+                    let mut params = Vec::new();
+                    for param in parameters {
+                        match param {
+                            GlobalNode::Parameter { name, variable_type } => {
+                                params.push((name.to_string(), Type::from_keyword(variable_type)));
+                            },
+                            _ => return Err(ErrorMessage::global().get_error_message(
+                                ErrorContext::new(
+                                    ErrorCode::Runtime011,
+                                    None, None,
+                                    vec![("node", &format!("{:?}", function))],
+                                )
+                            )?),
                         }
                     }
-                }
-
-                for coroutine in coroutines {
-                    match coroutine {
-                        Node::CoroutineDefinition { name, block, doc:_ } => {
-                            self.coroutine_manager.add_def(name, block);
-                        },
-                        _ => {
-                            return Err(ErrorMessage::global().get_error_message(
-                                &ErrorContext::new(ErrorCode::Runtime003, 0, 0, vec![("node", &format!("{:?}", coroutine))])
-                            )?)
-                        }
-                    }
-                }
-                
-                if let Some((_, block)) = self.functions.get("main").cloned() {
-                    self.execute(&block)?;
-                } else {
+                    self.functions.add_def(name, params, block);
+                },
+                _ => {
                     return Err(ErrorMessage::global().get_error_message(
-                        &ErrorContext::new(
-                            ErrorCode::Runtime002,
-                            0, 0,
-                            vec![("function", "main")],
+                        ErrorContext::new(
+                            ErrorCode::Runtime003,
+                            None, None,
+                            vec![("node", &format!("{:?}", function))],
                         )
-                    )?);
+                    )?)
                 }
-            },
-            _ => {
-                return Err(ErrorMessage::global().get_error_message(
-                    &ErrorContext::new(ErrorCode::Runtime003, 0, 0, vec![("node", &format!("{:?}", node))])
-                )?)
-            },
+            }
+        }
+
+        for coroutine in coroutines {
+            match coroutine {
+                GlobalNode::CoroutineDefinition { name, block, doc:_ } => {
+                    self.coroutine_manager.add_def(name, block);
+                },
+                _ => {
+                    return Err(ErrorMessage::global().get_error_message(
+                        ErrorContext::new(
+                            ErrorCode::Runtime003,
+                            None, None,
+                            vec![("node", &format!("{:?}", coroutine))],
+                        )
+                    )?)
+                }
+            }
+        }
+        
+        if let Some(function_def) = self.functions.get_function("main").cloned() {
+            self.execute(&function_def.process)?;
+        } else {
+            return Err(ErrorMessage::global().get_error_message(
+                ErrorContext::new(
+                    ErrorCode::Runtime002,
+                    None, None,
+                    vec![("function", "main")],
+                )
+            )?);
         }
 
         Ok(())
     }
 
     /// プログラムの実行
-    fn execute(&mut self, node: &Node) -> Result<EvalFlow<GreenValue>, String> {
+    fn execute(&mut self, node: &PrivateNode) -> Result<EvalFlow<GreenValue>, String> {
         match &node {
-            Node::Block { block_type:_, statements } => {
+            PrivateNode::Block { block_type:_, statements } => {
                 for child in statements {
                     let result = self.statement(child)?;
                     match result {
@@ -119,9 +116,9 @@ impl Interpreter {
                 }
             },
             _ => return Err(ErrorMessage::global().get_error_message(
-                &ErrorContext::new(
+                ErrorContext::new(
                     ErrorCode::Runtime003,
-                    0, 0,
+                    None, None,
                     vec![("node", &format!("{:?}",node))],
                 )
             )?),
@@ -129,12 +126,12 @@ impl Interpreter {
         Ok(EvalFlow::Normal)
     }
 
-    fn statement(&mut self, node: &Node) -> Result<EvalFlow<GreenValue>, String> {
+    fn statement(&mut self, node: &PrivateNode) -> Result<EvalFlow<GreenValue>, String> {
         match &node {
-            Node::FunctionCall { name: _, arguments: _ } => {
+            PrivateNode::FunctionCall { name: _, arguments: _ } => {
                 self.execute_function(node)?;
             },
-            Node::VariableDeclaration { name, variable_type, initializer, doc: _ } => {
+            PrivateNode::VariableDeclaration { name, variable_type, initializer, doc: _ } => {
                 let value_type = Type::from_keyword(variable_type);
                 let value = match initializer {
                     Some(expression) => self.evaluate_assignable(expression)?.value,
@@ -145,40 +142,44 @@ impl Interpreter {
                     value_type,
                     value,
                 };
-                self.variables.set_variable(name, &value);
+                self.variable_manager.set_variable(name, &value);
             },
-            Node::VariableAssignment { name, expression } => {
+            PrivateNode::VariableAssignment { name, expression } => {
                 let value = self.evaluate_assignable(expression)?;
-                self.variables.change_variable(name.to_string(), value)?;
+                self.variable_manager.change_variable(name.to_string(), value)?;
             },
-            Node::IfStatement { condition_node, then_block, else_block } => {
+            PrivateNode::IfStatement { condition_node, then_block, else_block } => {
                 return self.evaluate_if_statement(condition_node, then_block, else_block);
             },
-            Node::LoopStatement { condition_node, block } => {
+            PrivateNode::LoopStatement { condition_node, block } => {
                 return self.evaluate_loop_statement(condition_node, block);
             },
             
-            Node::ReturnStatement { assignalbe } => {
+            PrivateNode::ReturnStatement { assignalbe } => {
                 let return_value = self.evaluate_assignable(assignalbe)?;
                 return Ok(EvalFlow::Return(return_value));
             },
 
-            Node::CoroutineInstantiation { task_name, coroutine_name } => {
+            PrivateNode::CoroutineInstantiation { task_name, coroutine_name } => {
                 match self.coroutine_manager.add_task(task_name, coroutine_name) {
                     Ok(_) => {},
-                    Err(e) => return Err(ErrorMessage::global().get_error_message(&e)?),
+                    Err(e) => return Err(ErrorMessage::global().get_error_message(e)?),
                 }
             },
-            Node::CoroutineResume { task_name } => {
+            PrivateNode::CoroutineResume { task_name } => {
                 let mut task = match self.coroutine_manager.get_task(task_name) {
                     Ok(task) => task,
-                    Err(e) => return Err(ErrorMessage::global().get_error_message(&e)?),
+                    Err(e) => return Err(ErrorMessage::global().get_error_message(e)?),
                 };
 
                 match &task.status {
                     CoroutineStatus::Completed => {
                         return Err(ErrorMessage::global().get_error_message(
-                            &ErrorContext::new(ErrorCode::Runtime021, 0, 0, vec![("coroutine_name", task_name)])
+                            ErrorContext::new(
+                                ErrorCode::Runtime020,
+                                None, None,
+                                vec![("coroutine_name", task_name)],
+                            )
                         )?)
                     },
                     CoroutineStatus::Ready | CoroutineStatus::Paused => {
@@ -197,7 +198,7 @@ impl Interpreter {
                     let index = task.current_position;
                     let node = &task.process[index];
                     match node {
-                        Node::Yield => {
+                        PrivateNode::Yield => {
                             task.step();
                             task.status = CoroutineStatus::Paused;
                             self.coroutine_manager.set_task(task_name, task);
@@ -211,18 +212,18 @@ impl Interpreter {
                 }
             },
 
-            Node::ProcessComment { comment:_ } => {},
+            PrivateNode::ProcessComment { comment:_ } => {},
 
-            Node::Break => {
+            PrivateNode::Break => {
                 return Ok(EvalFlow::Break);
             },
-            Node::Continue => {
+            PrivateNode::Continue => {
                 return Ok(EvalFlow::Continue);
             }
             _ => return Err(ErrorMessage::global().get_error_message(
-                &ErrorContext::new(
+                ErrorContext::new(
                     ErrorCode::Runtime003,
-                    0, 0,
+                    None, None,
                     vec![("node", &format!("{:?}", node))],
                 )
             )?),
@@ -231,46 +232,45 @@ impl Interpreter {
     }
 
     /// print関数の実行
-    fn print_function(&mut self, arguments: &Vec<Node>) -> Result<(), String> {
+    fn print_function(&mut self, arguments: &Vec<PrivateNode>) -> Result<(), String> {
         let values = self.evaluate_argument(arguments)?;
         let result = values.iter().map(|x| x.value.to_string()).collect::<Vec<_>>().join(" ");
         println!("{}", result);
         Ok(())
     }
 
-    fn execute_function(&mut self, node: &Node) -> Result<Option<GreenValue>, String> {
+    fn execute_function(&mut self, node: &PrivateNode) -> Result<Option<GreenValue>, String> {
         match &node {
-            Node::FunctionCall { name, arguments } | Node::FunctionCallWithReturn { name, arguments } => {
+            PrivateNode::FunctionCall { name, arguments } | PrivateNode::FunctionCallWithReturn { name, arguments } => {
                 match name.as_str() {
                     "print" => self.print_function(arguments)?,
                     _ => {
-                        let function_data = self.functions.get(name).cloned();
-                        if let Some((parameters, function_node)) = function_data {
-                            if parameters.len() != arguments.len() {
+                        if let Some(function_def) = self.functions.get_function(name).cloned() {
+                            if function_def.parameters.len() != arguments.len() {
                                 return Err(ErrorMessage::global().get_error_message(
-                                    &ErrorContext::new(
+                                    ErrorContext::new(
                                         ErrorCode::Runtime012, 
-                                        0, 0,
+                                        None, None,
                                         vec![
-                                            ("parameters", &parameters.len().to_string()),
+                                            ("parameters", &function_def.parameters.len().to_string()),
                                             ("arguments", &arguments.len().to_string()),
                                             ("name", name),
                                         ],
                                     )
                                 )?);
                             }
-                            self.variables.push_scope();
+                            self.variable_manager.push_scope();
 
                             let values = self.evaluate_argument(arguments)?;
-                            for ((param_name, param_type), value) in parameters.into_iter().zip(values.into_iter()) {
+                            for ((param_name, param_type), value) in function_def.parameters.into_iter().zip(values.into_iter()) {
                                 if param_type == value.value_type {
-                                    self.variables.set_variable(&param_name, &value);
+                                    self.variable_manager.set_variable(&param_name, &value);
                                 }
                                 else {
                                     return Err(ErrorMessage::global().get_error_message(
-                                        &ErrorContext::new(
+                                        ErrorContext::new(
                                             ErrorCode::Runtime013,
-                                            0, 0,
+                                            None, None,
                                             vec![
                                                 ("parameter", &param_type.to_string()),
                                                 ("argument", &value.value_type.to_string()),
@@ -282,18 +282,18 @@ impl Interpreter {
                                 }
                             }
 
-                            let result = self.execute(&function_node)?;
+                            let result = self.execute(&function_def.process)?;
                             match result {
                                 EvalFlow::Return(value) => {
-                                    self.variables.pop_scope();
+                                    self.variable_manager.pop_scope();
                                     return Ok(Some(value))
                                 },
                                 EvalFlow::Normal => {},
                                 _ => {
                                     return Err(ErrorMessage::global().get_error_message(
-                                        &ErrorContext::new(
+                                        ErrorContext::new(
                                             ErrorCode::Runtime018,
-                                            0, 0,
+                                            None, None,
                                             vec![("node", &format!("{:?}", result))],
                                         )
                                     )?)
@@ -301,30 +301,30 @@ impl Interpreter {
                             }
                         } else {
                             return Err(ErrorMessage::global().get_error_message(
-                                &ErrorContext::new(
+                                ErrorContext::new(
                                     ErrorCode::Runtime002,
-                                    0, 0,
+                                    None, None,
                                     vec![("function", name)],
                                 )
                             )?);
                         }
 
-                        self.variables.pop_scope();
+                        self.variable_manager.pop_scope();
                     },
                 }
                 Ok(None)
             }
             _ => return Err(ErrorMessage::global().get_error_message(
-                &ErrorContext::new(
+                ErrorContext::new(
                     ErrorCode::Runtime003,
-                    0, 0,
+                    None, None,
                     vec![("node", &format!("{:?}", node))],
                 )
             )?),
         }
     }
 
-    fn evaluate_if_statement(&mut self, condition_node: &Node, then_block: &Node, else_block: &Option<Box<Node>>) -> Result<EvalFlow<GreenValue>, String> {
+    fn evaluate_if_statement(&mut self, condition_node: &PrivateNode, then_block: &PrivateNode, else_block: &Option<Box<PrivateNode>>) -> Result<EvalFlow<GreenValue>, String> {
         if let LiteralValue::Bool(condition_result) = self.evaluate_assignable(&condition_node)?.value {
             match condition_result {
                 true => return self.execute(then_block),
@@ -336,9 +336,9 @@ impl Interpreter {
             }
         } else {
             return Err(ErrorMessage::global().get_error_message(
-                &ErrorContext::new(
+                ErrorContext::new(
                     ErrorCode::Runtime014,
-                    0, 0,
+                    None, None,
                     vec![("node", &format!("{:?}",condition_node))],
                 )
             )?)
@@ -346,7 +346,7 @@ impl Interpreter {
         Ok(EvalFlow::Normal)
     }
 
-    fn evaluate_loop_statement(&mut self, condition_node: &Node, block: &Node) -> Result<EvalFlow<GreenValue>, String> {
+    fn evaluate_loop_statement(&mut self, condition_node: &PrivateNode, block: &PrivateNode) -> Result<EvalFlow<GreenValue>, String> {
         loop {
             let condition_value = self.evaluate_assignable(&condition_node)?;
 
@@ -362,9 +362,9 @@ impl Interpreter {
                 },
                 LiteralValue::Bool(false) => break,
                 _ => return Err(ErrorMessage::global().get_error_message(
-                    &ErrorContext::new(
-                        ErrorCode::Runtime014,
-                        0, 0,
+                    ErrorContext::new(
+                        ErrorCode::Runtime017,
+                        None, None,
                         vec![("node", &format!("{:?}",condition_node))],
                     )
                 )?)
@@ -374,7 +374,7 @@ impl Interpreter {
     }
 
     /// 引数の評価
-    fn evaluate_argument(&mut self, arguments: &Vec<Node>) -> Result<Vec<GreenValue>, String> {
+    fn evaluate_argument(&mut self, arguments: &Vec<PrivateNode>) -> Result<Vec<GreenValue>, String> {
         let mut values = Vec::new();
         for child in arguments {
             values.push(self.evaluate_assignable(child)?);
@@ -384,20 +384,20 @@ impl Interpreter {
 
     /// 割り当て可能値の評価（引数、代入式の右辺など）
     /// LiteralValueからGreenValueへの変換も行う
-    fn evaluate_assignable(&mut self, node: &Node) -> Result<GreenValue, String> {
+    fn evaluate_assignable(&mut self, node: &PrivateNode) -> Result<GreenValue, String> {
         let literal_value = match &node {
-            Node::Compare{ operator: _, left: _, right: _ } | Node::Arithmetic{ operator: _, left: _, right: _ }
-            | Node::Variable { name: _ } | Node::Logical{ operator: _, left: _, right: _ } => {
+            PrivateNode::Compare{ operator: _, left: _, right: _ } | PrivateNode::Arithmetic{ operator: _, left: _, right: _ }
+            | PrivateNode::Variable { name: _ } | PrivateNode::Logical{ operator: _, left: _, right: _ } => {
                 self.evaluate_expression(node)?
             },
-            Node::FunctionCallWithReturn { name:_, arguments:_ } => {
+            PrivateNode::FunctionCallWithReturn { name:_, arguments:_ } => {
                 self.execute_function(node)?.ok_or("err")?.value
             },
-            Node::Literal{ value: _ } => self.evaluate_literal(node)?,
+            PrivateNode::Literal{ value: _ } => self.evaluate_literal(node)?,
             _ => return Err(ErrorMessage::global().get_error_message(
-                &ErrorContext::new(
+                ErrorContext::new(
                     ErrorCode::Runtime005,
-                    0, 0,
+                    None, None,
                     vec![("node", &format!("{:?}", node))],
                 )
             )?),
@@ -413,10 +413,10 @@ impl Interpreter {
     }
 
     /// 式の評価
-    fn evaluate_expression(&mut self, node: &Node) -> Result<LiteralValue, String> {
+    fn evaluate_expression(&mut self, node: &PrivateNode) -> Result<LiteralValue, String> {
         match &node {
             // 論理演算
-            Node::Logical {
+            PrivateNode::Logical {
                 operator,
                 left,
                 right,
@@ -429,9 +429,9 @@ impl Interpreter {
                             Ok(LiteralValue::Bool(result))
                         } else {
                             Err(ErrorMessage::global().get_error_message(
-                                &ErrorContext::new(
+                                ErrorContext::new(
                                     ErrorCode::Runtime008,
-                                    0, 0,
+                                    None, None,
                                     vec![
                                         ("operator", &operator.to_string()),
                                         ("node", &format!("{:?}", node)),
@@ -445,9 +445,9 @@ impl Interpreter {
                         let right = match right {
                             Some(right) => self.evaluate_expression(&right)?,
                             None => return Err(ErrorMessage::global().get_error_message(
-                                &ErrorContext::new(
+                                ErrorContext::new(
                                     ErrorCode::Runtime009,
-                                    0, 0,
+                                    None, None,
                                     vec![],
                                 )
                             )?),
@@ -459,9 +459,9 @@ impl Interpreter {
                             },
                             (left_value, right_value) => {
                                 Err(ErrorMessage::global().get_error_message(
-                                    &ErrorContext::new(
+                                    ErrorContext::new(
                                         ErrorCode::Runtime015,
-                                        0, 0,
+                                        None, None,
                                         vec![
                                             ("left", &left_value.to_string()),
                                             ("operator", &operator.to_string()),
@@ -475,7 +475,7 @@ impl Interpreter {
                 }
             },
             // 比較
-            Node::Compare {
+            PrivateNode::Compare {
                 operator,
                 left,
                 right
@@ -505,9 +505,9 @@ impl Interpreter {
                             Comparison::Equal => Ok(LiteralValue::Bool(left_value == right_value)),
                             Comparison::NotEqual => Ok(LiteralValue::Bool(left_value != right_value)),
                             _ => Err(ErrorMessage::global().get_error_message(
-                                &ErrorContext::new(
+                                ErrorContext::new(
                                     ErrorCode::Runtime006,
-                                    0, 0,
+                                    None, None,
                                     vec![("operator", &operator.to_string())],
                                 )
                             )?),
@@ -515,9 +515,9 @@ impl Interpreter {
                     },
                     (left_value, right_value) => {
                         Err(ErrorMessage::global().get_error_message(
-                            &ErrorContext::new(
+                            ErrorContext::new(
                                 ErrorCode::Runtime016,
-                                0, 0,
+                                None, None,
                                 vec![
                                     ("left", &left_value.to_string()),
                                     ("operator", &operator.to_string()),
@@ -529,7 +529,7 @@ impl Interpreter {
                 }
             },
             // 四則演算
-            Node::Arithmetic {
+            PrivateNode::Arithmetic {
                 operator,
                 left,
                 right
@@ -568,9 +568,9 @@ impl Interpreter {
                                 }
                             },
                             _ => Err(ErrorMessage::global().get_error_message(
-                                &ErrorContext::new(
+                                ErrorContext::new(
                                     ErrorCode::Runtime015,
-                                    0, 0,
+                                    None, None,
                                     vec![
                                         ("left", &left_literal.to_string()),
                                         ("operator", &operator.to_string()),
@@ -599,9 +599,9 @@ impl Interpreter {
                                         Ok(LiteralValue::Int(result))
                                     },
                                     _ => Err(ErrorMessage::global().get_error_message(
-                                        &ErrorContext::new(
+                                        ErrorContext::new(
                                             ErrorCode::Runtime008,
-                                            0, 0,
+                                            None, None,
                                             vec![
                                                 ("operator", &operator.to_string()),
                                                 ("node", &format!("{:?}", left)),
@@ -612,9 +612,9 @@ impl Interpreter {
                             },
                             _ => {
                                 return Err(ErrorMessage::global().get_error_message(
-                                    &ErrorContext::new(
+                                    ErrorContext::new(
                                         ErrorCode::Runtime009,
-                                        0, 0,
+                                        None, None,
                                         vec![],
                                     )
                                 )?);
@@ -623,15 +623,15 @@ impl Interpreter {
                     },
                 }
             },
-            Node::Variable { name } => {
-                let variable = self.variables.get_variable(name)?;
+            PrivateNode::Variable { name } => {
+                let variable = self.variable_manager.get_variable(name)?;
                 Ok(variable)
             },
-            Node::Literal { value: _ } => self.evaluate_literal(node),
+            PrivateNode::Literal { value: _ } => self.evaluate_literal(node),
             _ => Err(ErrorMessage::global().get_error_message(
-                &ErrorContext::new(
+                ErrorContext::new(
                     ErrorCode::Runtime003,
-                    0, 0,
+                    None, None,
                     vec![("node", &format!("{:?}",node))],
                 )
             )?),
@@ -667,16 +667,16 @@ impl Interpreter {
     }
 
     /// 値の評価
-    fn evaluate_literal(&mut self, node: &Node) -> Result<LiteralValue, String> {
+    fn evaluate_literal(&mut self, node: &PrivateNode) -> Result<LiteralValue, String> {
         match &node {
-            Node::Literal { value } => Ok(value.clone()),
+            PrivateNode::Literal { value } => Ok(value.clone()),
             _ => { Err(format!("想定外のリテラルの型: {:?}", node)) }
         }
     }
 
 }
 
-pub fn execute(node: &Node) -> Result<(), String> {
+pub fn execute(node: &RootNode) -> Result<(), String> {
     let mut interpreter = Interpreter::new();
     interpreter.execute_program(node)?;
     Ok(())

@@ -1,5 +1,5 @@
 use std::{iter::Peekable, vec::IntoIter};
-use super::node::Node;
+use super::node::{RootNode, GlobalNode, PrivateNode};
 use crate::{
     lexer::token::{Token, TokenKind},
     common::{
@@ -31,14 +31,14 @@ impl Parser {
     }
 
     /// ルートの構文解析
-    fn parse_program(&mut self) -> Node {
+    fn parse_program(&mut self) -> RootNode {
         self.push_block(BlockType::Global);
         let program = self.parse_global();
         self.pop_block();
         program
     }
 
-    fn parse_global(&mut self) -> Node {
+    fn parse_global(&mut self) -> RootNode {
         let mut functions = Vec::new();
         let mut coroutines = Vec::new();
 
@@ -62,7 +62,7 @@ impl Parser {
                                 self.errors.push(
                                     ErrorContext::new(
                                         ErrorCode::Parse006,
-                                        token.row, token.col,
+                                        Some(token.row), Some(token.col),
                                         vec![("statement", "プロセスコメント"), ("block", "関数")],
                                     )
                                 );
@@ -105,7 +105,7 @@ impl Parser {
                             self.errors.push(
                                 ErrorContext::new(
                                     ErrorCode::Parse006,
-                                    token.row, token.col,
+                                    Some(token.row), Some(token.col),
                                     vec![("statement", &keyword.to_string()), ("block", "関数")],
                                 )
                             );
@@ -117,7 +117,7 @@ impl Parser {
                     self.errors.push(
                         ErrorContext::new(
                             ErrorCode::Parse002,
-                            token.row, token.col,
+                            Some(token.row), Some(token.col),
                             vec![("token", &token.kind.to_string())],
                         )
                     );
@@ -128,15 +128,15 @@ impl Parser {
             self.doc_comment = String::new();
         }
 
-        Node::Program { functions, coroutines }
+        RootNode::Program { functions, coroutines }
     }
 
-    fn parse_function_definition(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_function_definition(&mut self) -> Result<GlobalNode, ErrorContext> {
         let token = self.next_token()?;
         if self.block_stack.last() != Some(&BlockType::Global) {
             self.errors.push(ErrorContext::new(
                 ErrorCode::Parse006,
-                token.row, token.col,
+                Some(token.row), Some(token.col),
                 vec![
                     ("statement", "function"),
                     ("block", "global_block"),
@@ -152,7 +152,7 @@ impl Parser {
             _ => {
                 self.errors.push(ErrorContext::new(
                     ErrorCode::Parse005,
-                    token.row, token.col,
+                    Some(token.row), Some(token.col),
                     vec![("token", "関数名")]
                 ));
                 "None".to_string()
@@ -172,7 +172,7 @@ impl Parser {
                 _ => {
                     self.errors.push(ErrorContext::new(
                         ErrorCode::Parse002,
-                        token.row, token.col,
+                        Some(token.row), Some(token.col),
                         vec![("token", &token.kind.to_string())],
                     ));
                     "None".to_string()
@@ -187,7 +187,7 @@ impl Parser {
                 _ => {
                     self.errors.push(ErrorContext::new(
                         ErrorCode::Parse002,
-                        type_token.row, type_token.col,
+                        Some(type_token.row), Some(type_token.col),
                         vec![("token", &type_token.kind.to_string())],
                     ));
                     TypeName::Bool
@@ -198,11 +198,9 @@ impl Parser {
             match token.kind {
                 TokenKind::Comma => { self.next_token()?; },
                 TokenKind::RParen => {
-                    let param = Node::VariableDeclaration {
+                    let param = GlobalNode::Parameter {
                         name,
                         variable_type,
-                        initializer: None,
-                        doc: None,
                     };
                     parameters.push(param);
                     break;
@@ -210,18 +208,16 @@ impl Parser {
                 _ => {
                     self.errors.push(ErrorContext::new(
                         ErrorCode::Parse002,
-                        token.row, token.col,
+                        Some(token.row), Some(token.col),
                         vec![("token", &token.kind.to_string())],
                     ));
                     self.next_token()?;
                 },
             }
 
-            let param = Node::VariableDeclaration {
+            let param = GlobalNode::Parameter {
                 name,
                 variable_type,
-                initializer: None,
-                doc: None,
             };
             parameters.push(param);
         }
@@ -235,21 +231,21 @@ impl Parser {
 
         self.check_next_token(TokenKind::RBrace);
 
-        Ok(Node::FunctionDefinition {
+        Ok(GlobalNode::FunctionDefinition {
             name: function_name,
             parameters,
-            block: Box::new(block),
+            block,
             doc,
         })
 
     }
 
-    fn parse_coroutine_definition(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_coroutine_definition(&mut self) -> Result<GlobalNode, ErrorContext> {
         let token = self.next_token()?;
         if self.block_stack.last() != Some(&BlockType::Global) {
             self.errors.push(ErrorContext::new(
                 ErrorCode::Parse006,
-                token.row, token.col,
+                Some(token.row), Some(token.col),
                 vec![
                     ("statement", "coroutine"),
                     ("block", "global_block"),
@@ -265,7 +261,7 @@ impl Parser {
             _ => {
                 self.errors.push(ErrorContext::new(
                     ErrorCode::Parse005,
-                    token.row, token.col,
+                    Some(token.row), Some(token.col),
                     vec![("token", "コルーチン名")]
                 ));
                 "None".to_string()
@@ -281,10 +277,10 @@ impl Parser {
         self.pop_block();
 
         self.check_next_token(TokenKind::RBrace);
-        Ok(Node::CoroutineDefinition { name: coroutine_name, block: Box::new(block), doc })
+        Ok(GlobalNode::CoroutineDefinition { name: coroutine_name, block, doc })
     }
 
-    fn parse_statements(&mut self, block_type: BlockType) -> Node {
+    fn parse_statements(&mut self, block_type: BlockType) -> PrivateNode {
         let scope_end = match block_type {
             BlockType::Conditional | BlockType::Coroutine | BlockType::Function | BlockType::Loop => Some(TokenKind::RBrace),
             BlockType::Global => None,
@@ -335,13 +331,13 @@ impl Parser {
             self.doc_comment = String::new();
         }
 
-        return Node::Block {
+        return PrivateNode::Block {
             block_type,
             statements,
         }
     }
 
-    fn parse_statement(&mut self, token: Token) -> Result<Node, ErrorContext> {
+    fn parse_statement(&mut self, token: Token) -> Result<PrivateNode, ErrorContext> {
         match token.kind {
             TokenKind::Identifier(name) => self.parse_identifier(name),
             TokenKind::ControlKeyword(keyword) => {
@@ -351,7 +347,7 @@ impl Parser {
 
                     _ => return Err(ErrorContext::new(
                         ErrorCode::Parse002,
-                        token.row, token.col,
+                        Some(token.row), Some(token.col),
                         vec![("token", &keyword.to_string())],
                     )),
                 }
@@ -361,7 +357,7 @@ impl Parser {
                 if !self.block_stack.contains(&BlockType::Function) {
                     self.errors.push(ErrorContext::new(
                         ErrorCode::Parse006,
-                        token.row, token.col,
+                        Some(token.row), Some(token.col),
                         vec![
                             ("statement", &keyword.to_string()),
                             ("block", "function"),
@@ -375,11 +371,11 @@ impl Parser {
                             Ok(node) => node,
                             Err(e) => {
                                 self.errors.push(e);
-                                Node::Error
+                                PrivateNode::Error
                             },
                         };
                         self.check_next_token(TokenKind::Semicolon);
-                        Ok(Node::ReturnStatement {
+                        Ok(PrivateNode::ReturnStatement {
                             assignalbe: Box::new(return_value),
                         })
                     },
@@ -389,7 +385,7 @@ impl Parser {
                 if !self.block_stack.contains(&BlockType::Loop) {
                     self.errors.push(ErrorContext::new(
                         ErrorCode::Parse006,
-                        token.row, token.col,
+                        Some(token.row), Some(token.col),
                         vec![
                             ("statement", &keyword.to_string()),
                             ("block", "loop"),
@@ -401,8 +397,8 @@ impl Parser {
                 self.check_next_token(TokenKind::Semicolon);
 
                 let node = match keyword {
-                    LoopControl::Break => Node::Break,
-                    LoopControl::Continue => Node::Continue,
+                    LoopControl::Break => PrivateNode::Break,
+                    LoopControl::Continue => PrivateNode::Continue,
                 };
 
                 Ok(node)
@@ -415,16 +411,20 @@ impl Parser {
                         let name_token = self.next_token()?;
                         let task_name = match name_token.kind {
                             TokenKind::Identifier(name) => name,
-                            _ => return Err(ErrorContext::new(ErrorCode::Parse005, name_token.row, name_token.col, vec![])),
+                            _ => return Err(ErrorContext::new(
+                                ErrorCode::Parse005,
+                                Some(name_token.row), Some(name_token.col),
+                                vec![],
+                            )),
                         };
                         self.check_next_token(TokenKind::Semicolon);
-                        Ok(Node::CoroutineResume { task_name })
+                        Ok(PrivateNode::CoroutineResume { task_name })
                     },
                     CoroutineControl::Yield => {
                         if !self.block_stack.contains(&BlockType::Coroutine) {
                             self.errors.push(ErrorContext::new(
                                 ErrorCode::Parse006,
-                                token.row, token.col,
+                                Some(token.row), Some(token.col),
                                 vec![
                                     ("statement", &keyword.to_string()),
                                     ("block", "コルーチン"),
@@ -432,20 +432,20 @@ impl Parser {
                             ))
                         }
                         self.check_next_token(TokenKind::Semicolon);
-                        Ok(Node::Yield)
+                        Ok(PrivateNode::Yield)
                     },
                 }
             },
 
             _ => return Err(ErrorContext::new(
                 ErrorCode::Parse002,
-                token.row, token.col,
+                Some(token.row), Some(token.col),
                 vec![("token", &token.kind.to_string())],
             )),
         }
     }
 
-    fn parse_if_statement(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_if_statement(&mut self) -> Result<PrivateNode, ErrorContext> {
         self.next_token()?;
 
         self.check_next_token(TokenKind::LParen);
@@ -454,7 +454,7 @@ impl Parser {
             Ok(node) => node,
             Err(e) => {
                 self.errors.push(e);
-                Node::Error
+                PrivateNode::Error
             },
         };
 
@@ -483,14 +483,14 @@ impl Parser {
             _ => None,
         };
 
-        Ok(Node::IfStatement {
+        Ok(PrivateNode::IfStatement {
             condition_node: Box::new(condition),
             then_block: Box::new(then_block),
             else_block: else_block.map(Box::new),
         })
     }
 
-    fn parse_loop_statement(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_loop_statement(&mut self) -> Result<PrivateNode, ErrorContext> {
         self.next_token()?;
         self.check_next_token(TokenKind::LParen);
 
@@ -498,7 +498,7 @@ impl Parser {
             Ok(node) => node,
             Err(e) => {
                 self.errors.push(e);
-                Node::Error
+                PrivateNode::Error
             },
         };
 
@@ -512,13 +512,13 @@ impl Parser {
 
         self.check_next_token(TokenKind::RBrace);
 
-        Ok(Node::LoopStatement {
+        Ok(PrivateNode::LoopStatement {
             condition_node: Box::new(condition_node),
             block: Box::new(block),
         })
     }
 
-    fn parse_identifier(&mut self, name: String) -> Result<Node, ErrorContext> {
+    fn parse_identifier(&mut self, name: String) -> Result<PrivateNode, ErrorContext> {
         self.next_token()?;  // 変数名または関数名のトークンをスキップスキップ
         let token = self.next_token()?;
 
@@ -529,7 +529,7 @@ impl Parser {
                 self.check_next_token(TokenKind::RParen);
                 self.check_next_token(TokenKind::Semicolon);
                 
-                return Ok(Node::FunctionCall {
+                return Ok(PrivateNode::FunctionCall {
                     name,
                     arguments,
                 });
@@ -539,7 +539,7 @@ impl Parser {
                 
                 self.check_next_token(TokenKind::Semicolon);
         
-                return Ok(Node::VariableAssignment {
+                return Ok(PrivateNode::VariableAssignment {
                     name,
                     expression: Box::new(expression),
                 })
@@ -547,14 +547,14 @@ impl Parser {
             _ => {
                 return Err(ErrorContext::new(
                     ErrorCode::Parse002,
-                    token.row, token.col,
+                    Some(token.row), Some(token.col),
                     vec![("token", &token.kind.to_string())],
                 ))
             },
         }
     }
 
-    fn parse_declaration_keyword(&mut self, keyword: DeclarationKeyword, row: u32, col: u32) -> Result<Node, ErrorContext> {
+    fn parse_declaration_keyword(&mut self, keyword: DeclarationKeyword, row: u32, col: u32) -> Result<PrivateNode, ErrorContext> {
         match keyword {
             DeclarationKeyword::Let => {
                 self.next_token()?;
@@ -564,7 +564,7 @@ impl Parser {
                     _ => {
                         self.errors.push(ErrorContext::new(
                             ErrorCode::Parse005,
-                            name_token.row, name_token.col,
+                            Some(name_token.row), Some(name_token.col),
                             vec![("token", "変数名")],
                         ));
                         "None".to_string()
@@ -579,7 +579,7 @@ impl Parser {
                     _ => {
                         self.errors.push(ErrorContext::new(
                             ErrorCode::Parse005,
-                            name_token.row, name_token.col,
+                            Some(name_token.row), Some(name_token.col),
                             vec![("token", "型")],
                         ));
                         TypeName::Bool
@@ -597,14 +597,14 @@ impl Parser {
                     _ =>{
                         self.errors.push(ErrorContext::new(
                             ErrorCode::Parse005,
-                            next_token.row, next_token.col,
+                            Some(next_token.row), Some(next_token.col),
                             vec![("token", ";")],
                         ));
                         None
                     }
                 };
 
-                return Ok(Node::VariableDeclaration {
+                return Ok(PrivateNode::VariableDeclaration {
                     name: name.to_string(),
                     variable_type,
                     initializer,
@@ -619,7 +619,7 @@ impl Parser {
                     _ => {
                         self.errors.push(ErrorContext::new(
                             ErrorCode::Parse005,
-                            name_token.row, name_token.col,
+                            Some(name_token.row), Some(name_token.col),
                             vec![("token", "インスタンス名")],
                         ));
                         "None".to_string()
@@ -634,12 +634,12 @@ impl Parser {
                         self.check_next_token(TokenKind::LParen);
                         self.check_next_token(TokenKind::RParen);
                         self.check_next_token(TokenKind::Semicolon);
-                        Ok(Node::CoroutineInstantiation { task_name, coroutine_name })
+                        Ok(PrivateNode::CoroutineInstantiation { task_name, coroutine_name })
                     },
                     _ => {
                         Err(ErrorContext::new(
                             ErrorCode::Parse005,
-                            token.row, token.col,
+                            Some(token.row), Some(token.col),
                             vec![("token", "コルーチン名")],
                         ))
                     },
@@ -648,7 +648,7 @@ impl Parser {
             _ => {
                 Err(ErrorContext::new(
                     ErrorCode::Parse006,
-                    row, col,
+                    Some(row), Some(col),
                     vec![("statement", &keyword.to_string()), ("block", "global block")],
                 ))
             }
@@ -656,7 +656,7 @@ impl Parser {
     }
 
     /// 引数の構文解析
-    fn parse_argument(&mut self) -> Vec<Node> {
+    fn parse_argument(&mut self) -> Vec<PrivateNode> {
 
         let mut arguments = Vec::new();
         loop {
@@ -664,7 +664,7 @@ impl Parser {
                 Ok(token) => token,
                 Err(e) => {
                     self.errors.push(e);
-                    arguments.push(Node::Error);
+                    arguments.push(PrivateNode::Error);
                     break;
                 },
             };
@@ -674,7 +674,7 @@ impl Parser {
                 Ok(node) => node,
                 Err(e) => {
                     self.errors.push(e);
-                    Node::Error
+                    PrivateNode::Error
                 },
             };
             arguments.push(arg);
@@ -700,7 +700,7 @@ impl Parser {
                 _ => {
                     self.errors.push(ErrorContext::new(
                         ErrorCode::Parse002,
-                        token.row, token.col,
+                        Some(token.row), Some(token.col),
                         vec![("token", &token.kind.to_string())],
                     ));
                     break;
@@ -712,7 +712,7 @@ impl Parser {
     }
 
     /// 割り当て可能値の構文解析（引数、代入式の右辺）
-    fn parse_assignable(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_assignable(&mut self) -> Result<PrivateNode, ErrorContext> {
 
         let token = self.peek_token()?;
         match token.kind.clone() {
@@ -730,7 +730,7 @@ impl Parser {
                         
                         self.check_next_token(TokenKind::RParen);
                         
-                        return Ok(Node::FunctionCallWithReturn {
+                        return Ok(PrivateNode::FunctionCallWithReturn {
                             name,
                             arguments,
                         });
@@ -742,24 +742,24 @@ impl Parser {
             },
             _ => Err(ErrorContext::new(
                 ErrorCode::Parse002,
-                token.row, token.col,
+                Some(token.row), Some(token.col),
                 vec![("token", &token.kind.to_string())],
             )),
         }
     }
 
     /// 式の構文解析
-    fn parse_expression(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_expression(&mut self) -> Result<PrivateNode, ErrorContext> {
         self.parse_logical()
     }
 
     /// 論理演算の構文解析
-    fn parse_logical(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_logical(&mut self) -> Result<PrivateNode, ErrorContext> {
         self.parse_or_expr()
     }
 
     /// OR演算の構文解析
-    fn parse_or_expr(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_or_expr(&mut self) -> Result<PrivateNode, ErrorContext> {
         let mut left = self.parse_and_expr()?;
         loop {
             let token = self.peek_token()?;
@@ -769,7 +769,7 @@ impl Parser {
 
             self.next_token()?;
             let right = self.parse_and_expr()?;
-            left = Node::Logical {
+            left = PrivateNode::Logical {
                 operator: Logical::Binary(BinaryLogical::Or),
                 left: Box::new(left),
                 right: Some(Box::new(right)),
@@ -779,7 +779,7 @@ impl Parser {
     }
 
     /// AND演算の構文解析
-    fn parse_and_expr(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_and_expr(&mut self) -> Result<PrivateNode, ErrorContext> {
         let mut left = self.parse_not_expr()?;
         loop {
             let token = self.peek_token()?;
@@ -788,7 +788,7 @@ impl Parser {
                     Logical::Binary(BinaryLogical::And) | Logical::Binary(BinaryLogical::Xor) => {
                         self.next_token()?;
                         let right = self.parse_not_expr()?;
-                        left = Node::Logical {
+                        left = PrivateNode::Logical {
                             operator: op,
                             left: Box::new(left),
                             right: Some(Box::new(right)),
@@ -805,12 +805,12 @@ impl Parser {
     }
 
     /// NOT演算の構文解析
-    fn parse_not_expr(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_not_expr(&mut self) -> Result<PrivateNode, ErrorContext> {
         let token = self.peek_token()?;
         match token.kind {
             TokenKind::LogicalOperator(Logical::Unary(UnaryLogical::Not)) => {
                 let value = self.parse_expression()?;
-                Ok(Node::Logical {
+                Ok(PrivateNode::Logical {
                     operator: Logical::Unary(UnaryLogical::Not),
                     left: Box::new(value),
                     right: None,
@@ -822,7 +822,7 @@ impl Parser {
     }
 
     /// 比較式の構文解析
-    fn parse_compare(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_compare(&mut self) -> Result<PrivateNode, ErrorContext> {
         let left = self.parse_value();
         let token = self.peek_token()?;
         let operator = match token.kind {
@@ -832,7 +832,7 @@ impl Parser {
         
         self.next_token()?;
         let right = self.parse_value()?;
-        return Ok(Node::Compare {
+        return Ok(PrivateNode::Compare {
             operator,
             left: Box::new(left?),
             right: Box::new(right),
@@ -840,7 +840,7 @@ impl Parser {
     }
 
     /// 値の構文解析
-    fn parse_value(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_value(&mut self) -> Result<PrivateNode, ErrorContext> {
         let token = self.peek_token()?;
         match token.kind {
             TokenKind::NumberLiteral(_) | TokenKind::ArithmeticOperator(Arithmetic::Plus|Arithmetic::Minus)
@@ -850,14 +850,14 @@ impl Parser {
             TokenKind::StringLiteral(_) => return self.parse_literal(),
             _ => Err(ErrorContext::new(
                 ErrorCode::Parse002,
-                token.row, token.col,
+                Some(token.row), Some(token.col),
                 vec![("token", &token.kind.to_string())],
             )),
         }
     }
 
     /// 足し算、引き算の構文解析
-    fn parse_add_and_sub(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_add_and_sub(&mut self) -> Result<PrivateNode, ErrorContext> {
         let mut left = self.parse_mul_and_div()?;
         while let Some(TokenKind::ArithmeticOperator(Arithmetic::Plus|Arithmetic::Minus)) = self.tokens.peek().map(|t| &t.kind) {
             let operator = match self.next_token()?.kind {
@@ -865,7 +865,7 @@ impl Parser {
                 _ => unreachable!(),
             };
             let right = self.parse_mul_and_div()?;
-            left = Node::Arithmetic {
+            left = PrivateNode::Arithmetic {
                 operator: operator,
                 left: Box::new(left),
                 right: Some(Box::new(right)),
@@ -875,7 +875,7 @@ impl Parser {
     }
 
     /// 掛け算、割り算の構文解析
-    fn parse_mul_and_div(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_mul_and_div(&mut self) -> Result<PrivateNode, ErrorContext> {
         let mut left = self.parse_unary()?;
         while let Some(TokenKind::ArithmeticOperator(Arithmetic::Multiply|Arithmetic::Divide)) = self.tokens.peek().map(|t| &t.kind) {
             let operator = match self.next_token()?.kind {
@@ -884,7 +884,7 @@ impl Parser {
             };
             self.next_token()?;
             let right = self.parse_unary()?;
-            left = Node::Arithmetic {
+            left = PrivateNode::Arithmetic {
                 operator: operator,
                 left: Box::new(left),
                 right: Some(Box::new(right)),
@@ -894,7 +894,7 @@ impl Parser {
     }
 
     /// 単項演算子の構文解析
-    fn parse_unary(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_unary(&mut self) -> Result<PrivateNode, ErrorContext> {
         let token = self.peek_token()?;
         match token.kind {
             TokenKind::NumberLiteral(_) | TokenKind::LParen | TokenKind::Identifier(_)
@@ -904,7 +904,7 @@ impl Parser {
             TokenKind::ArithmeticOperator(Arithmetic::Minus) => {
                 self.next_token()?;
                 let number = self.parse_primary()?;
-                Ok(Node::Arithmetic {
+                Ok(PrivateNode::Arithmetic {
                     operator: Arithmetic::Minus,
                     left: Box::new(number),
                     right: None,
@@ -912,14 +912,14 @@ impl Parser {
             },
             _ => Err(ErrorContext::new(
                 ErrorCode::Parse002,
-                token.row, token.col,
+                Some(token.row), Some(token.col),
                 vec![("token", &token.kind.to_string())],
             )),
         }
     }
 
     /// 数値、計算式の'()'の構文解析
-    fn parse_primary(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_primary(&mut self) -> Result<PrivateNode, ErrorContext> {
         let token = self.peek_token()?;
         match token.kind{
             TokenKind::NumberLiteral(_) => return self.parse_literal(),
@@ -933,31 +933,31 @@ impl Parser {
             TokenKind::Identifier(_) => return self.parse_variable(),
             _ => Err(ErrorContext::new(
                 ErrorCode::Parse002,
-                token.row, token.col,
+                Some(token.row), Some(token.col),
                 vec![("token", &token.kind.to_string())],
             )),
         }
     }
 
     /// 変数呼び出しの構文解析
-    fn parse_variable(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_variable(&mut self) -> Result<PrivateNode, ErrorContext> {
         let token = self.next_token()?;
         match token.kind {
-            TokenKind::Identifier(name) => Ok(Node::Variable { name }),
+            TokenKind::Identifier(name) => Ok(PrivateNode::Variable { name }),
             _ => Err(ErrorContext::new(
                 ErrorCode::Parse002,
-                token.row,token.col,
+                Some(token.row), Some(token.col),
                 vec![("token", &token.kind.to_string())],
             )),
         }
     }
 
     /// リテラル型の構文解析（String, Number, Bool）
-    fn parse_literal(&mut self) -> Result<Node, ErrorContext> {
+    fn parse_literal(&mut self) -> Result<PrivateNode, ErrorContext> {
         let token = self.next_token()?;
         match token.kind {
             TokenKind::StringLiteral(value) => {
-                return Ok(Node::Literal { value: LiteralValue::String(value) });
+                return Ok(PrivateNode::Literal { value: LiteralValue::String(value) });
             },
             TokenKind::NumberLiteral(integer) => {
                 if let Ok(int_value) = integer.parse::<i32>() {
@@ -970,21 +970,21 @@ impl Parser {
                             if let TokenKind::NumberLiteral(decimal) = token.kind {
                                 number_string.push_str(&decimal);
                                 if let Ok(float_value) = number_string.parse::<f64>() {
-                                    return Ok(Node::Literal { value: LiteralValue::Float(float_value) });
+                                    return Ok(PrivateNode::Literal { value: LiteralValue::Float(float_value) });
                                 }
                             }
                             return Err(ErrorContext::new(
                                 ErrorCode::Parse004,
-                                token.row, token.col,
+                                Some(token.row), Some(token.col),
                                 vec![("number", &number_string)],
                             ))
                         },
-                        _ => return Ok(Node::Literal { value: LiteralValue::Int(int_value) })
+                        _ => return Ok(PrivateNode::Literal { value: LiteralValue::Int(int_value) })
                     }
                 } else {
                     return Err(ErrorContext::new(
                         ErrorCode::Parse004,
-                        token.row, token.col,
+                        Some(token.row), Some(token.col),
                         vec![("number", &integer)],
                     ))
                 }
@@ -992,23 +992,22 @@ impl Parser {
             TokenKind::BoolLiteral(value) => {
                 match value {
                     BoolKeyword::True => {
-                        return Ok(Node::Literal { value: LiteralValue::Bool(true) });
+                        return Ok(PrivateNode::Literal { value: LiteralValue::Bool(true) });
                     },
                     BoolKeyword::False => {
-                        return Ok(Node::Literal { value: LiteralValue::Bool(false) });
+                        return Ok(PrivateNode::Literal { value: LiteralValue::Bool(false) });
                     },
                 }
             },
             _ => return Err(ErrorContext::new(
                 ErrorCode::Parse002,
-                token.row,
-                token.col,
+                Some(token.row), Some(token.col),
                 vec![("token", &token.kind.to_string())],
             )),
         }
     }
 
-    fn parse_doc_comment(&mut self, token: &Token) -> Result<Option<Node>, ErrorContext> {
+    fn parse_doc_comment(&mut self, token: &Token) -> Result<Option<PrivateNode>, ErrorContext> {
         if let TokenKind::DocComment(string) = &token.kind {
             self.next_token()?;
             if string.starts_with("@process") {
@@ -1017,7 +1016,7 @@ impl Parser {
                     process_comment = format!("{}\n{}", process_comment, string);
                     self.next_token()?;
                 }
-                return Ok(Some(Node::ProcessComment { comment: process_comment }));
+                return Ok(Some(PrivateNode::ProcessComment { comment: process_comment }));
             } else {
                 let mut doc_comment = string.to_string();
                 while let TokenKind::DocComment(string) = self.peek_token()?.kind {
@@ -1045,7 +1044,7 @@ impl Parser {
             None => {
                 Err(ErrorContext::new(
                     ErrorCode::Parse003,
-                    0, 0,
+                    None, None,
                     vec![],
                 ))
             },
@@ -1058,7 +1057,7 @@ impl Parser {
             Some(token) if token.kind == TokenKind::EOF => {
                 Err(ErrorContext::new(
                     ErrorCode::Parse003,
-                    token.row, token.col,
+                    Some(token.row), Some(token.col),
                     vec![],
                 ))
             },
@@ -1067,7 +1066,7 @@ impl Parser {
             None => {
                 Err(ErrorContext::new(
                     ErrorCode::Parse003,
-                    0, 0,
+                    None, None,
                     vec![],
                 ))
             },
@@ -1086,7 +1085,7 @@ impl Parser {
 
             self.errors.push(ErrorContext::new(
                 ErrorCode::Parse005,
-                token.row, token.col,
+                Some(token.row), Some(token.col),
                 vec![("token", kind_str)],
             ));
         }
@@ -1101,7 +1100,7 @@ impl Parser {
             Some(token) => Ok(token),
             None => Err(ErrorContext::new(
                 ErrorCode::Parse003,
-                token.row, token.col,
+                Some(token.row), Some(token.col),
                 vec![]
             ))
         }
@@ -1119,7 +1118,7 @@ impl Parser {
 }
 
 /// 構文解析を行う
-pub fn parse(tokens: Vec<Token>) -> (Node, Vec<ErrorContext>) {
+pub fn parse(tokens: Vec<Token>) -> (RootNode, Vec<ErrorContext>) {
     let mut parser = Parser::new(tokens);
     let node = parser.parse_program();
     (node, parser.errors)

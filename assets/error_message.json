@@ -1,6 +1,4 @@
 {
-    "CMD001": "不明なオプション: {option}",
-    "CMD002": "不正なコマンドライン構文",
     "IO001": "ファイルが見つからない: {file_name}",
     "LEX001": "字句エラー:\n {message}",
     "LEX002": "想定外の文字: {char} \n {row}行 {col}列目",
@@ -32,7 +30,6 @@
     "RUNTIME017": "想定外のループ条件: {node}",
     "RUNTIME018": "想定外のフロー: {node}",
     "RUNTIME019": "未定義のコルーチン: {coroutine}",
-    "RUNTIME020": "不正なコルーチン定義: {coroutine}",
-    "RUNTIME021": "完了したタスクの呼び出し: {coroutine_name}",
+    "RUNTIME020": "完了したタスクの呼び出し: {coroutine_name}",
     "ALL": "不明なエラー"
 }

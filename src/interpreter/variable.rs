@@ -7,13 +7,13 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct Environment {
+pub struct VariableManager {
     scopes: Vec<HashMap<String, GreenValue>>,
 }
 
-impl Environment {
+impl VariableManager {
     pub fn new() -> Self {
-        Environment {
+        Self {
             scopes: vec![HashMap::new()],
         }
     }
@@ -31,9 +31,9 @@ impl Environment {
             }
         }
         Err(ErrorMessage::global().get_error_message(
-            &ErrorContext::new(
+            ErrorContext::new(
                 ErrorCode::Runtime007,
-                0, 0,
+                None, None,
                 vec![("variable", name)]
             )
         )?)
@@ -47,9 +47,9 @@ impl Environment {
                     return Ok(())
                 } else {
                     return Err(ErrorMessage::global().get_error_message(
-                        &ErrorContext::new(
+                        ErrorContext::new(
                             ErrorCode::Runtime010,
-                            0, 0,
+                            None, None,
                             vec![
                                 ("variable_type", &variable.value_type.to_string()),
                                 ("value_type", &value.value_type.to_string()),
@@ -61,9 +61,9 @@ impl Environment {
             }
         }
         Err(ErrorMessage::global().get_error_message(
-            &ErrorContext::new(
+            ErrorContext::new(
                 ErrorCode::Runtime007,
-                0, 0,
+                None, None,
                 vec![("variable", &name)],
             )
         )?)

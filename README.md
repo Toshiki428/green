@@ -5,16 +5,17 @@
 
 ## 構文
 ```txt
-<program> ::= <statements>
-<statements> ::= <statement> | <statements> <statement>
-<statement> ::= <function_call> | <variable_declaration> | <if_statement> | <function_definition> | <while_statement> | <coroutine_statement>
-<if_statement> ::= "if" "(" <assignable> ")" <block> [ "else" <block> ]
+<program> ::= <function_definition> | <coroutine_definition>
 <function_definition> = "function" <function_name> "(" ((<variable> ":" <type> "," )* <variable> ":" <type>)? ")" <function_block>
-<while_statement> ::= "while" "(" <assignable> ")" <loop_block>
-<coroutine_statement> ::= "coroutine" <function_name> "(" ")" <coroutine_block>
-<block> ::= "{" <statements> "}"
-<coroutine_block> ::= "{" <statements> "yield" "}"
+<coroutine_definition> ::= "coroutine" <function_name> "(" ")" <coroutine_block>
+<coroutine_block> ::= "{" <statements> "yield;" "}"
 <function_block> ::= "{" <statements> ("return" <assignable> ";")* "}"
+
+<statements> ::= <statement> | <statements> <statement>
+<statement> ::= <function_call> | <variable_declaration> | <if_statement> | <while_statement>
+<if_statement> ::= "if" "(" <assignable> ")" <block> [ "else" <block> ]
+<while_statement> ::= "while" "(" <assignable> ")" <loop_block>
+<block> ::= "{" <statements> "}"
 <loop_block> ::= "{" <statements> ("continue" ";" | "break" ";")* "}"
 <function_call> ::= <function_name> "(" <argument> ")"
 <argument> ::= <assignable>

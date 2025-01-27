@@ -1,10 +1,5 @@
 #[derive(Debug, PartialEq, Clone)]
 pub enum ErrorCode {
-    /// コマンドオプションエラー
-    Cmd001,
-    /// コマンド構文エラー
-    Cmd002,
-
     /// ファイルが見つからない
     Io001,
 
@@ -32,30 +27,45 @@ pub enum ErrorCode {
     /// 特定ブロック内でのみ使えるキーワード
     Parse006,
     
+    /// 実行時エラー
     Runtime001,
+    /// 未定義の関数呼び出し
     Runtime002,
+    /// 想定外ノード
     Runtime003,
     Runtime004,
+    /// 想定外の値
     Runtime005,
+    /// 想定外の文字列比較
     Runtime006,
+    /// 未定義の変数呼び出し
     Runtime007,
+    /// 想定外の演算
     Runtime008,
+    /// 代入値不足
     Runtime009,
+    /// 型エラー
     Runtime010,
+    /// 想定外の引数
     Runtime011,
+    /// 引数の個数
     Runtime012,
+    /// 引数の型エラー
     Runtime013,
+    /// 想定外のif条件
     Runtime014,
+    /// 想定外の演算
     Runtime015,
+    /// 異なる型の比較
     Runtime016,
+    /// 想定外のループ条件
     Runtime017,
+    /// 想定外のフロー
     Runtime018,
     /// 未定義のコルーチン
     Runtime019,
-    /// 不正なコルーチン生成
-    Runtime020,
     /// 完了したタスクの呼び出し
-    Runtime021,
+    Runtime020,
 
     ALL,
 }
@@ -63,8 +73,6 @@ pub enum ErrorCode {
 impl ErrorCode {
     pub fn to_string(&self) -> String {
         let str = match self {
-            Self::Cmd001 => "CMD001",
-            Self::Cmd002 => "CMD002",
             Self::Io001 => "IO001",
             Self::Lex001 => "LEX001",
             Self::Lex002 => "LEX002",
@@ -97,7 +105,6 @@ impl ErrorCode {
             Self::Runtime018 => "RUNTIME018",
             Self::Runtime019 => "RUNTIME019",
             Self::Runtime020 => "RUNTIME020",
-            Self::Runtime021 => "RUNTIME021",
             Self::ALL => "ALL",
         };
         str.to_string()

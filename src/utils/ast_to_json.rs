@@ -1,33 +1,35 @@
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
-use std::collections::HashMap;
-use crate::parser::node::Node;
-use std::fs::File;
-use std::io::Write;
+use crate::parser::node::{RootNode, GlobalNode, PrivateNode};
+use std::{
+    fs::File,
+    io::Write,
+    collections::HashMap,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct JsonData {
     definitions: Vec<Definition>,
-    structures: Structures,
+    structures: HashMap<String, Vec<Data>>,
 }
 impl JsonData {
-    pub fn new(ast: Node) {
+    pub fn new(ast: RootNode) {
         let mut json_data = Self {
             definitions: Vec::new(),
-            structures: Structures::new(),
+            structures: HashMap::new(),
         };
 
         let _ = json_data.ast_to_json(ast);
     }
 
-    pub fn ast_to_json(&mut self, ast: Node) -> serde_json::Result<()> {    
+    pub fn ast_to_json(&mut self, ast: RootNode) -> serde_json::Result<()> {    
         match ast {
-            Node::Program { functions, coroutines } => {
+            RootNode::Program { functions, coroutines } => {
                 for function in functions {
                     match function {
-                        Node::FunctionDefinition { name, parameters:_, block , doc} => {
+                        GlobalNode::FunctionDefinition { name, parameters:_, block , doc} => {
                             self.definitions.push(Definition::new(&name, "function", &doc));
-                            let stack = AnalyzeAst::new(*block);
+                            let stack = AnalyzeAst::new(block);
                             self.structures.insert(name, stack);
                         },
                         _ => {},
@@ -36,16 +38,15 @@ impl JsonData {
     
                 for coroutine in coroutines {
                     match coroutine {
-                        Node::CoroutineDefinition { name, block, doc } => {
+                        GlobalNode::CoroutineDefinition { name, block, doc } => {
                             self.definitions.push(Definition::new(&name, "coroutine", &doc));
-                            let stack = AnalyzeAst::new(*block);
+                            let stack = AnalyzeAst::new(block);
                             self.structures.insert(name, stack);
                         },
                         _ => {},
                     }
                 }
             },
-            _ => {},
         }
     
         // シリアライズ
@@ -89,13 +90,11 @@ impl Data {
     }
 }
 
-type Structures = HashMap<String, Vec<Data>>;
-
 struct AnalyzeAst {
     stack: Vec<Data>,
 }
 impl AnalyzeAst {
-    fn new(ast: Node) -> Vec<Data> {
+    fn new(ast: PrivateNode) -> Vec<Data> {
         let mut analyze_ast = Self{
             stack: Vec::new(),
         };
@@ -103,41 +102,41 @@ impl AnalyzeAst {
         return analyze_ast.stack;
     }
 
-    fn analyze_ast(&mut self, ast: Node) {
+    fn analyze_ast(&mut self, ast: PrivateNode) {
         match ast {
-            Node::Block { block_type:_, statements } => {
+            PrivateNode::Block { block_type:_, statements } => {
                 for statement in statements {
                     self.analyze_ast(statement)
                 }
             },
 
-            Node::IfStatement { condition_node:_, then_block, else_block } => {
+            PrivateNode::IfStatement { condition_node:_, then_block, else_block } => {
                 self.analyze_ast(*then_block);
                 if let Some(else_block) = else_block {
                     self.analyze_ast(*else_block);
                 }
             },
-            Node::LoopStatement { condition_node:_, block } => {
+            PrivateNode::LoopStatement { condition_node:_, block } => {
                 self.analyze_ast(*block);
             },
 
-            Node::VariableDeclaration { name:_, variable_type:_, initializer, doc:_ } => {
+            PrivateNode::VariableDeclaration { name:_, variable_type:_, initializer, doc:_ } => {
                 if let Some(ini) = initializer {
                     self.analyze_ast(*ini);
                 }
             },
-            Node::VariableAssignment { name:_, expression } => {
+            PrivateNode::VariableAssignment { name:_, expression } => {
                 self.analyze_ast(*expression);
             },
 
-            Node::CoroutineInstantiation { task_name:_, coroutine_name:_ } => {
+            PrivateNode::CoroutineInstantiation { task_name:_, coroutine_name:_ } => {
                 // あとで
             },
-            Node::CoroutineResume { task_name:_ } => {
+            PrivateNode::CoroutineResume { task_name:_ } => {
                 // あとで
             },
 
-            Node::FunctionCall { name, arguments } | Node::FunctionCallWithReturn { name, arguments } => {
+            PrivateNode::FunctionCall { name, arguments } | PrivateNode::FunctionCallWithReturn { name, arguments } => {
                 if name != "print" {
                     self.stack.push(Data::new(
                         "function_call",
@@ -152,7 +151,7 @@ impl AnalyzeAst {
                 }
             },
             
-            Node::ProcessComment { comment } => {
+            PrivateNode::ProcessComment { comment } => {
                 self.stack.push(Data::new(
                     "doc",
                     serde_json::json!({
