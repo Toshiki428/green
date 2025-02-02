@@ -1,4 +1,4 @@
-use crate::{error::{error_code::ErrorCode, error_context::ErrorContext}, parser::node::PrivateNode};
+use crate::{error::{error_code::ErrorCode, error_context::ErrorContext}, parser::node::{BlockNode, PrivateNode}};
 // use super::execute::
 use std::collections::HashMap;
 
@@ -22,13 +22,8 @@ pub struct CoroutineTask {
     pub process: Vec<PrivateNode>,
 }
 impl CoroutineTask {
-    pub fn new(task_name: &str, process: &PrivateNode) -> Self {
-        let process = match process {
-            PrivateNode::Block { block_type:_, statements } => {
-                statements
-            },
-            _ => panic!("coroutine block error"),
-        };
+    pub fn new(task_name: &str, process: &BlockNode) -> Self {
+        let process = process.statements.clone();
         Self {
             task_name: task_name.to_string(),
             status: CoroutineStatus::Ready,
@@ -46,7 +41,7 @@ impl CoroutineTask {
 }
 
 pub struct CoroutineManager {
-    coroutine_defs: HashMap<String, PrivateNode>,
+    coroutine_defs: HashMap<String, BlockNode>,
     coroutine_tasks: HashMap<String, CoroutineTask>,
 }
 impl CoroutineManager {
@@ -57,7 +52,7 @@ impl CoroutineManager {
         }
     }
 
-    pub fn add_def(&mut self, coroutine_name: &str, process: &PrivateNode) {
+    pub fn add_def(&mut self, coroutine_name: &str, process: &BlockNode) {
         self.coroutine_defs.insert(
             coroutine_name.to_string(),
             process.clone(),

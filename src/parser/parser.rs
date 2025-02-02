@@ -1,16 +1,14 @@
 use std::{iter::Peekable, vec::IntoIter};
-use super::node::{RootNode, GlobalNode, PrivateNode};
+use super::node::*;
 use crate::{
-    lexer::token::{Token, TokenKind},
     common::{
         keyword::*,
         operator::*,
-        types::{BlockType, LiteralValue},
-    },
-    error::{
+        types::{BlockType, LiteralValue, Type},
+    }, error::{
         error_code::ErrorCode,
         error_context::ErrorContext,
-    },
+    }, lexer::token::{Token, TokenKind}
 };
 
 struct Parser {
@@ -128,10 +126,10 @@ impl Parser {
             self.doc_comment = String::new();
         }
 
-        RootNode::Program { functions, coroutines }
+        RootNode { functions, coroutines }
     }
 
-    fn parse_function_definition(&mut self) -> Result<GlobalNode, ErrorContext> {
+    fn parse_function_definition(&mut self) -> Result<FunctionDefinitionNode, ErrorContext> {
         let token = self.next_token()?;
         if self.block_stack.last() != Some(&BlockType::Global) {
             self.errors.push(ErrorContext::new(
@@ -183,14 +181,14 @@ impl Parser {
             
             let type_token = self.next_token()?;
             let variable_type = match type_token.kind {
-                TokenKind::TypeName(type_name) => type_name,
+                TokenKind::TypeName(type_name) => Type::from_keyword(&type_name),
                 _ => {
                     self.errors.push(ErrorContext::new(
                         ErrorCode::Parse002,
                         Some(type_token.row), Some(type_token.col),
                         vec![("token", &type_token.kind.to_string())],
                     ));
-                    TypeName::Bool
+                    Type::Bool
                 },
             };
             
@@ -198,7 +196,7 @@ impl Parser {
             match token.kind {
                 TokenKind::Comma => { self.next_token()?; },
                 TokenKind::RParen => {
-                    let param = GlobalNode::Parameter {
+                    let param = ParameterNode {
                         name,
                         variable_type,
                     };
@@ -215,7 +213,7 @@ impl Parser {
                 },
             }
 
-            let param = GlobalNode::Parameter {
+            let param = ParameterNode {
                 name,
                 variable_type,
             };
@@ -223,7 +221,36 @@ impl Parser {
         }
 
         self.check_next_token(TokenKind::RParen);
-        self.check_next_token(TokenKind::LBrace);
+
+        let next_token = self.next_token()?;
+        let return_type = match next_token.kind {
+            TokenKind::LBrace => {
+                None
+            },
+            TokenKind::RArrow => {
+                let type_token = self.next_token()?;
+                match type_token.kind {
+                    TokenKind::TypeName(type_name) => {
+                        self.check_next_token(TokenKind::LBrace);
+                        Some(Type::from_keyword(&type_name))
+                    },
+                    _ => {
+                        return Err(ErrorContext::new(
+                            ErrorCode::Parse002,
+                            Some(type_token.row), Some(type_token.col),
+                            vec![("token", &type_token.kind.to_string())],
+                        ))
+                    },
+                }
+            },
+            _ => {
+                return Err(ErrorContext::new(
+                    ErrorCode::Parse002,
+                    Some(next_token.row), Some(next_token.col),
+                    vec![("token", &next_token.kind.to_string())],
+                ))
+            },
+        };
         
         self.push_block(BlockType::Function);
         let block = self.parse_statements(BlockType::Function);
@@ -231,16 +258,17 @@ impl Parser {
 
         self.check_next_token(TokenKind::RBrace);
 
-        Ok(GlobalNode::FunctionDefinition {
+        Ok(FunctionDefinitionNode {
             name: function_name,
             parameters,
+            return_type,
             block,
             doc,
         })
 
     }
 
-    fn parse_coroutine_definition(&mut self) -> Result<GlobalNode, ErrorContext> {
+    fn parse_coroutine_definition(&mut self) -> Result<CoroutineDefinitionNode, ErrorContext> {
         let token = self.next_token()?;
         if self.block_stack.last() != Some(&BlockType::Global) {
             self.errors.push(ErrorContext::new(
@@ -277,10 +305,10 @@ impl Parser {
         self.pop_block();
 
         self.check_next_token(TokenKind::RBrace);
-        Ok(GlobalNode::CoroutineDefinition { name: coroutine_name, block, doc })
+        Ok(CoroutineDefinitionNode { name: coroutine_name, block, doc })
     }
 
-    fn parse_statements(&mut self, block_type: BlockType) -> PrivateNode {
+    fn parse_statements(&mut self, block_type: BlockType) -> BlockNode {
         let scope_end = match block_type {
             BlockType::Conditional | BlockType::Coroutine | BlockType::Function | BlockType::Loop => Some(TokenKind::RBrace),
             BlockType::Global => None,
@@ -331,7 +359,7 @@ impl Parser {
             self.doc_comment = String::new();
         }
 
-        return PrivateNode::Block {
+        return BlockNode {
             block_type,
             statements,
         }
@@ -485,8 +513,8 @@ impl Parser {
 
         Ok(PrivateNode::IfStatement {
             condition_node: Box::new(condition),
-            then_block: Box::new(then_block),
-            else_block: else_block.map(Box::new),
+            then_block,
+            else_block,
         })
     }
 
@@ -514,7 +542,7 @@ impl Parser {
 
         Ok(PrivateNode::LoopStatement {
             condition_node: Box::new(condition_node),
-            block: Box::new(block),
+            block: block,
         })
     }
 
@@ -532,6 +560,7 @@ impl Parser {
                 return Ok(PrivateNode::FunctionCall {
                     name,
                     arguments,
+                    return_flg: false,
                 });
             },
             TokenKind::Equal => {  // 変数と判定
@@ -575,14 +604,14 @@ impl Parser {
 
                 let type_token = self.next_token()?;
                 let variable_type = match type_token.kind {
-                    TokenKind::TypeName(type_name) => type_name,
+                    TokenKind::TypeName(type_name) => Type::from_keyword(&type_name),
                     _ => {
                         self.errors.push(ErrorContext::new(
                             ErrorCode::Parse005,
                             Some(name_token.row), Some(name_token.col),
                             vec![("token", "型")],
                         ));
-                        TypeName::Bool
+                        Type::Bool
                     },
                 };
 
@@ -730,9 +759,10 @@ impl Parser {
                         
                         self.check_next_token(TokenKind::RParen);
                         
-                        return Ok(PrivateNode::FunctionCallWithReturn {
+                        return Ok(PrivateNode::FunctionCall {
                             name,
                             arguments,
+                            return_flg: true,
                         });
                     },
                     _ => {

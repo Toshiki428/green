@@ -24,6 +24,7 @@ pub enum TokenKind {
     Semicolon,
     Comma,
     Dot,
+    RArrow,
 
     // キーワード
     ControlKeyword(ControlKeyword),
@@ -68,6 +69,7 @@ impl TokenKind {
             Self::RParen => ")",
             Self::Semicolon => ";",
             Self::Dot => ".",
+            Self::RArrow => "->",
             
             Self::ControlKeyword(keyword) => &keyword.to_string(),
             Self::TypeName(type_name) => &type_name.to_string(),

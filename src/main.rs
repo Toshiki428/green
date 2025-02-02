@@ -1,9 +1,9 @@
 use clap::Parser;
 
 use green::{
-    cli, error::{
+    analyzer::semantic, cli, error::{
         error_code::ErrorCode, error_context::ErrorContext, error_message::ErrorMessage
-    },interpreter::execute, lexer::lexical_analyzer, parser::parser, utils::{ast_to_json::JsonData, misc}
+    }, interpreter::execute, lexer::lexical_analyzer, parser::parser, utils::{ast_to_json::JsonData, misc}
 };
 
 fn main() -> Result<(), String> {
@@ -51,7 +51,16 @@ fn main() -> Result<(), String> {
         return Err("error".to_string())
     }
 
-    ast.print(0);
+    match semantic::semantic(&ast) {
+        Ok(_) => {},
+        Err(errors) => {
+            for error in errors {
+                let error_msg = ErrorMessage::global().get_error_message(error)?;
+                println!("{}", error_msg);
+            }
+            return Err("error".to_string())
+        }
+    };
 
     if cli.analyze {
         let _ = JsonData::new(ast);

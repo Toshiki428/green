@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{common::types::Type, parser::node::PrivateNode};
+use crate::{common::types::Type, parser::node::BlockNode};
 
 pub struct FunctionManager {
     pub function_defs: HashMap<String, FunctionDef>,
@@ -10,7 +10,7 @@ impl FunctionManager {
         Self { function_defs: HashMap::new() }
     }
 
-    pub fn add_def(&mut self, function_name: &str, parameters: Vec<(String, Type)>, process: &PrivateNode) {
+    pub fn add_def(&mut self, function_name: &str, parameters: Vec<(String, Type)>, process: &BlockNode) {
         self.function_defs.insert(
             function_name.to_string(),
             FunctionDef {
@@ -30,5 +30,5 @@ impl FunctionManager {
 pub struct FunctionDef {
     pub name: String,
     pub parameters: Vec<(String, Type)>,
-    pub process: PrivateNode,
+    pub process: BlockNode,
 }

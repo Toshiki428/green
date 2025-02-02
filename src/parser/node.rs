@@ -1,123 +1,63 @@
 use crate::common::{
-    operator::*,
-    keyword::TypeName,
-    types::{BlockType, LiteralValue},
+    operator::*, types::{BlockType, LiteralValue, Type}
 };
+
+// -------------------------------------
 
 /// ルートのノード
 #[derive(Debug, PartialEq, Clone)]
-pub enum RootNode {
-    Program {
-        functions: Vec<GlobalNode>,
-        coroutines: Vec<GlobalNode>,
-    },
+pub struct RootNode {
+    pub functions: Vec<FunctionDefinitionNode>,
+    pub coroutines: Vec<CoroutineDefinitionNode>,
 }
 
-impl RootNode {
-    /// デバッグ用のprint文
-    pub fn print(&self, depth: i32) {
-        self.indent(depth);
-        match self {
-            Self::Program { functions, coroutines } => {
-                println!("functions:");
-                for function in functions {
-                    function.print(depth+1);
-                }
-                self.indent(depth);
-                println!("coroutines:");
-                for coroutine in coroutines {
-                    coroutine.print(depth+1);
-                }
-            },
-        }
-    }
 
-    fn indent(&self, depth: i32) {
-        for _ in 0..depth {
-            print!("  ");
-        }
-    }
-}
+// -------------------------------------
 
-/// ルートノード直下のノード
+
+/// 関数定義ノード（ルートノード直下）
 #[derive(Debug, PartialEq, Clone)]
-pub enum GlobalNode {
-    /// 関数定義
-    FunctionDefinition {
-        name: String,
-        parameters: Vec<Self>,
-        block: PrivateNode,
-        doc: Option<String>,
-    },
-    /// コルーチン定義
-    CoroutineDefinition {
-        name: String,
-        block: PrivateNode,
-        doc: Option<String>,
-    },
-    /// 引数
-    Parameter {
-        name: String,
-        variable_type: TypeName,
-    },
+pub struct FunctionDefinitionNode {
+    pub name: String,
+    pub parameters: Vec<ParameterNode>,
+    pub return_type: Option<Type>,
+    pub block: BlockNode,
+    pub doc: Option<String>,
 }
-impl GlobalNode {
-    /// デバッグ用のprint文
-    pub fn print(&self, depth: i32) {
-        self.indent(depth);
-        match self {
-            Self::FunctionDefinition { name, parameters, block, doc } => {
-                println!("FunctionDefinition: {}", name);
-                if let Some(comment) = doc {
-                    self.indent(depth+1);
-                    println!("DocComment: {}", comment);
-                }
-                
-                block.print(depth+1);
-                for param in parameters {
-                    param.print(depth+1);
-                }
-            },
-            Self::CoroutineDefinition { name, block, doc } => {
-                println!("CoroutineDefinition: {}", name);
-                if let Some(comment) = doc {
-                    self.indent(depth+1);
-                    println!("DocComment: {}", comment);
-                }
 
-                block.print(depth+1);
-            },
-            Self::Parameter { name, variable_type } => {
-                println!("{}: {}", name, variable_type.to_string())
-            },
-        }
-    }
+/// コルーチン定義ノード（ルートノード直下）
+#[derive(Debug, PartialEq, Clone)]
+pub struct CoroutineDefinitionNode {
+    pub name: String,
+    pub block: BlockNode,
+    pub doc: Option<String>,
+}
 
-    fn indent(&self, depth: i32) {
-        for _ in 0..depth {
-            print!("  ");
-        }
-    }
+/// 関数のパラメータ定義ノード
+#[derive(Debug, PartialEq, Clone)]
+pub struct ParameterNode {
+    pub name: String,
+    pub variable_type: Type,
+}
+
+
+// -------------------------------------
+
+/// 関数、コルーチン、ループ、条件分岐のブロックノード
+#[derive(Debug, PartialEq, Clone)]
+pub struct BlockNode {
+    pub block_type: BlockType,
+    pub statements: Vec<PrivateNode>,
 }
 
 /// 関数内のノード
 #[derive(Debug, PartialEq, Clone)]
 pub enum PrivateNode {
-    /// ブロックのノード（関数、コルーチン、ループ、条件分岐）
-    Block {
-        block_type: BlockType,
-        statements: Vec<Self>,
-    },
-
-    /// 関数呼び出し（戻り値なし）
+    /// 関数呼び出し
     FunctionCall { 
         name: String,
         arguments: Vec<Self>,
-    },
-    /// 関数呼び出し（戻り値あり）
-    FunctionCallWithReturn {
-        name: String,
-        arguments: Vec<Self>,
+        return_flg: bool,
     },
 
     /// コルーチンのインスタンス化
@@ -135,7 +75,7 @@ pub enum PrivateNode {
     /// 変数宣言
     VariableDeclaration {
         name: String,
-        variable_type: TypeName,
+        variable_type: Type,
         initializer: Option<Box<Self>>,
         doc: Option<String>,
     },
@@ -152,13 +92,13 @@ pub enum PrivateNode {
     /// If文
     IfStatement {
         condition_node: Box<Self>,
-        then_block: Box<Self>,
-        else_block: Option<Box<Self>>,
+        then_block: BlockNode,
+        else_block: Option<BlockNode>,
     },
     /// ループ文
     LoopStatement {
         condition_node: Box<Self>,
-        block: Box<Self>,
+        block: BlockNode,
     },
 
     /// return文
@@ -198,134 +138,4 @@ pub enum PrivateNode {
     Literal {
         value: LiteralValue,
     },
-}
-impl PrivateNode {
-    /// デバッグ用のprint文
-    pub fn print(&self, depth: i32) {
-        self.indent(depth);
-        match self {
-            Self::Block { block_type, statements } => {
-                println!("block: ({})", block_type.to_string());
-                for statement in statements {
-                    statement.print(depth+1);
-                }
-            },
-            Self::FunctionCall { name, arguments } => {
-                println!("FunctionCall: {}", name);
-                self.indent(depth+1);
-                println!("Args:");
-                for argument in arguments {
-                    argument.print(depth+2);
-                }
-            },
-            Self::FunctionCallWithReturn { name, arguments } => {
-                println!("FunctionCallWithReturn: {}", name);
-                self.indent(depth+1);
-                println!("Args:");
-                for argument in arguments {
-                    argument.print(depth+2);
-                }
-            },
-            Self::CoroutineResume { task_name  } => {
-                println!("CoroutineResume: {}", task_name);
-            },
-            Self::CoroutineInstantiation { task_name, coroutine_name } => {
-                println!("CoroutineInstantiation: {} -> {}", coroutine_name, task_name);
-            },
-            Self::Yield => {
-                println!("Yield");
-            },
-            Self::VariableDeclaration { name, variable_type, initializer, doc } => {
-                println!("VariableDeaclaration: {} ({})", name, variable_type.to_string());
-                if let Some(comment) = doc {
-                    self.indent(depth+1);
-                    println!("DocComment: {}", comment);
-                }
-
-                if let Some(expression) = initializer {
-                    self.indent(depth+1);
-                    println!("initializer:");
-                    expression.print(depth+2);
-                }
-            },
-            Self::VariableAssignment { name, expression } => {
-                println!("VariableAssignment: {}", name);
-                expression.print(depth+1);
-            },
-            Self::Variable { name } => {
-                println!("Variable: {}", name);
-            },
-            Self::Logical { operator, left, right } => {
-                println!("operator: {}", operator.to_string());
-                self.indent(depth+1);
-                println!("left:");
-                left.print(depth+2);
-                if let Some(node) = right {
-                    self.indent(depth+1);
-                    println!("right:");
-                    node.print(depth+2);
-                }
-            },
-            Self::Compare { operator, left, right } => {
-                println!("operator: {}", operator.to_string());
-                self.indent(depth+1);
-                println!("left:");
-                left.print(depth+2);
-                self.indent(depth+1);
-                println!("right:");
-                right.print(depth+2);
-            },
-            Self::Arithmetic { operator, left, right } => {
-                println!("operator: {}", operator.to_string());
-                self.indent(depth+1);
-                println!("left:");
-                left.print(depth+2);
-                if let Some(node) = right {
-                    self.indent(depth+1);
-                    println!("right:");
-                    node.print(depth+2);
-                }
-            },
-            Self::Literal { value } => println!("Literal: {}", value.to_string()),
-            Self::IfStatement { condition_node, then_block, else_block } => {
-                println!("IfStatement:");
-                self.indent(depth+1);
-                println!("condition_node");
-                condition_node.print(depth+2);
-                self.indent(depth+1);
-                println!("then_block");
-                then_block.print(depth+2);
-                if let Some(node) = else_block {
-                    self.indent(depth+1);
-                    println!("else_block");
-                    node.print(depth+2);
-                }
-            },
-            Self::LoopStatement { condition_node, block } => {
-                println!("LoopStatement:");
-                self.indent(depth+1);
-                println!("condition_node");
-                condition_node.print(depth+2);
-                block.print(depth+2);
-            },
-            Self::ReturnStatement { assignalbe } => {
-                println!("Return:");
-                assignalbe.print(depth+1);
-            },
-
-            Self::ProcessComment { comment } => {
-                println!("ProcessComment: {}", comment);
-            }
-
-            Self::Break => println!("break"),
-            Self::Continue => println!("continue"),
-            Self::Error => println!("Error"),
-        }
-    }
-
-    fn indent(&self, depth: i32) {
-        for _ in 0..depth {
-            print!("  ");
-        }
-    }
 }

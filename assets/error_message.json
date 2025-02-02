@@ -6,12 +6,23 @@
     "LEX004": "想定外の終了 {row}行 {col}列目",
     "LEX005": "定義されていない演算子: {operator} \n {row}行 {col}列目",
     "LEX006": "想定外の数値: {number} \n {row}行 {col}列目",
+
     "PARSE001": "構文エラー： \n {message}",
     "PARSE002": "想定外のトークン: {token} \n {row}行 {col}列目",
     "PARSE003": "想定外のプログラム終了: \n{row}行 {col}列目",
     "PARSE004": "想定外の数値: {number} \n {row}行 {col}列目",
     "PARSE005": "'{token}'が必要 {row}行 {col}列目",
     "PARSE006": "'{statement}'は'{block}'内でのみ使えます {row}行 {col}列目",
+
+    "SEMANTIC001": "意味解析エラー:\n {message}",
+    "SEMANTIC002": "異なる型の演算: {left} {operator} {right}",
+    "SEMANTIC003": "想定外のノード: {node}",
+    "SEMANTIC004": "定義されていない関数の呼び出し: {function_name}",
+    "SEMANTIC005": "戻り値の型が定義されていない: {function_name}",
+    "SEMANTIC006": "不正な変数代入: {variable_name}\n {variable_type} {value_type}",
+    "SEMANTIC007": "定義されていない変数の呼び出し: {variable_name}",
+    "SEMANTIC008": "引数の個数の不一致（期待: {parameter}, 取得: {argument}）\n 関数名: {name}",
+
     "RUNTIME001": "実行エラー:\n {message}",
     "RUNTIME002": "未定義の関数: {function}",
     "RUNTIME003": "想定外のノード: {node}",

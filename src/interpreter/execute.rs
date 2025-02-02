@@ -6,7 +6,7 @@ use crate::{
         operator::{ Arithmetic, BinaryLogical, Comparison, Logical, UnaryLogical},
         types::{GreenValue, LiteralValue, Type},
     },
-    parser::node::{RootNode, GlobalNode, PrivateNode},
+    parser::node::*,
     error::{
         error_message::ErrorMessage,
         error_code::ErrorCode,
@@ -38,54 +38,19 @@ impl Interpreter {
     }
 
     fn execute_program(&mut self, node: &RootNode) -> Result<(), String> {
-        let RootNode::Program { functions, coroutines } = node;
+        let RootNode { functions, coroutines } = node;
         for function in functions {
-            match function {
-                GlobalNode::FunctionDefinition { name, parameters, block, doc:_ } => {
-                    let mut params = Vec::new();
-                    for param in parameters {
-                        match param {
-                            GlobalNode::Parameter { name, variable_type } => {
-                                params.push((name.to_string(), Type::from_keyword(variable_type)));
-                            },
-                            _ => return Err(ErrorMessage::global().get_error_message(
-                                ErrorContext::new(
-                                    ErrorCode::Runtime011,
-                                    None, None,
-                                    vec![("node", &format!("{:?}", function))],
-                                )
-                            )?),
-                        }
-                    }
-                    self.functions.add_def(name, params, block);
-                },
-                _ => {
-                    return Err(ErrorMessage::global().get_error_message(
-                        ErrorContext::new(
-                            ErrorCode::Runtime003,
-                            None, None,
-                            vec![("node", &format!("{:?}", function))],
-                        )
-                    )?)
-                }
+            let FunctionDefinitionNode {name, parameters, return_type:_, block, doc:_} = function;
+            let mut params = Vec::new();
+            for ParameterNode { name, variable_type } in parameters {
+                params.push((name.to_string(), variable_type.clone()));
             }
+            self.functions.add_def(name, params, block);
         }
 
         for coroutine in coroutines {
-            match coroutine {
-                GlobalNode::CoroutineDefinition { name, block, doc:_ } => {
-                    self.coroutine_manager.add_def(name, block);
-                },
-                _ => {
-                    return Err(ErrorMessage::global().get_error_message(
-                        ErrorContext::new(
-                            ErrorCode::Runtime003,
-                            None, None,
-                            vec![("node", &format!("{:?}", coroutine))],
-                        )
-                    )?)
-                }
-            }
+            let CoroutineDefinitionNode { name, block, doc:_ } = coroutine;
+            self.coroutine_manager.add_def(name, block);
         }
         
         if let Some(function_def) = self.functions.get_function("main").cloned() {
@@ -104,42 +69,31 @@ impl Interpreter {
     }
 
     /// プログラムの実行
-    fn execute(&mut self, node: &PrivateNode) -> Result<EvalFlow<GreenValue>, String> {
-        match &node {
-            PrivateNode::Block { block_type:_, statements } => {
-                for child in statements {
-                    let result = self.statement(child)?;
-                    match result {
-                        EvalFlow::Return(_) | EvalFlow::Break | EvalFlow::Continue => return Ok(result),
-                        EvalFlow::Normal => {},
-                    }
-                }
-            },
-            _ => return Err(ErrorMessage::global().get_error_message(
-                ErrorContext::new(
-                    ErrorCode::Runtime003,
-                    None, None,
-                    vec![("node", &format!("{:?}",node))],
-                )
-            )?),
+    fn execute(&mut self, block: &BlockNode) -> Result<EvalFlow<GreenValue>, String> {
+        for child in block.statements.clone() {
+            let result = self.statement(&child)?;
+            match result {
+                EvalFlow::Return(_) | EvalFlow::Break | EvalFlow::Continue => return Ok(result),
+                EvalFlow::Normal => {},
+            }
         }
+                
         Ok(EvalFlow::Normal)
     }
 
     fn statement(&mut self, node: &PrivateNode) -> Result<EvalFlow<GreenValue>, String> {
         match &node {
-            PrivateNode::FunctionCall { name: _, arguments: _ } => {
+            PrivateNode::FunctionCall { name: _, arguments: _, return_flg:_ } => {
                 self.execute_function(node)?;
             },
             PrivateNode::VariableDeclaration { name, variable_type, initializer, doc: _ } => {
-                let value_type = Type::from_keyword(variable_type);
                 let value = match initializer {
                     Some(expression) => self.evaluate_assignable(expression)?.value,
                     None => LiteralValue::Null,
                 };
 
                 let value = GreenValue {
-                    value_type,
+                    value_type: variable_type.clone(),
                     value,
                 };
                 self.variable_manager.set_variable(name, &value);
@@ -241,7 +195,7 @@ impl Interpreter {
 
     fn execute_function(&mut self, node: &PrivateNode) -> Result<Option<GreenValue>, String> {
         match &node {
-            PrivateNode::FunctionCall { name, arguments } | PrivateNode::FunctionCallWithReturn { name, arguments } => {
+            PrivateNode::FunctionCall { name, arguments, return_flg:_ } => {
                 match name.as_str() {
                     "print" => self.print_function(arguments)?,
                     _ => {
@@ -324,7 +278,7 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_if_statement(&mut self, condition_node: &PrivateNode, then_block: &PrivateNode, else_block: &Option<Box<PrivateNode>>) -> Result<EvalFlow<GreenValue>, String> {
+    fn evaluate_if_statement(&mut self, condition_node: &PrivateNode, then_block: &BlockNode, else_block: &Option<BlockNode>) -> Result<EvalFlow<GreenValue>, String> {
         if let LiteralValue::Bool(condition_result) = self.evaluate_assignable(&condition_node)?.value {
             match condition_result {
                 true => return self.execute(then_block),
@@ -346,7 +300,7 @@ impl Interpreter {
         Ok(EvalFlow::Normal)
     }
 
-    fn evaluate_loop_statement(&mut self, condition_node: &PrivateNode, block: &PrivateNode) -> Result<EvalFlow<GreenValue>, String> {
+    fn evaluate_loop_statement(&mut self, condition_node: &PrivateNode, block: &BlockNode) -> Result<EvalFlow<GreenValue>, String> {
         loop {
             let condition_value = self.evaluate_assignable(&condition_node)?;
 
@@ -390,7 +344,7 @@ impl Interpreter {
             | PrivateNode::Variable { name: _ } | PrivateNode::Logical{ operator: _, left: _, right: _ } => {
                 self.evaluate_expression(node)?
             },
-            PrivateNode::FunctionCallWithReturn { name:_, arguments:_ } => {
+            PrivateNode::FunctionCall { name:_, arguments:_ , return_flg:_} => {
                 self.execute_function(node)?.ok_or("err")?.value
             },
             PrivateNode::Literal{ value: _ } => self.evaluate_literal(node)?,

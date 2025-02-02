@@ -28,7 +28,7 @@ function main() {
 }
 
 /// return句を試すための関数
-function test_return(a: int, b:int) {
+function test_return(a: int, b:int) -> int {
     let i: int = 0;
     let sum: int = 0;
     /// スキップされるはず
@@ -42,7 +42,7 @@ function test_return(a: int, b:int) {
     return sum;
 }
 
-function test_break(a: int, b: int) {
+function test_break(a: int, b: int) -> int {
     let i: int = 0;
     let sum: int = 0;
     while (i < a) {
@@ -55,7 +55,7 @@ function test_break(a: int, b: int) {
     return sum;
 }
 
-function test_continue(a:int, b: int) {
+function test_continue(a:int, b: int) -> int {
     let i: int = 0;
     let sum: int = 0;
     while (i < a) {
@@ -71,7 +71,7 @@ function test_continue(a:int, b: int) {
 }
 
 /// コルーチン
-/// 1回目：10、2回目：20、を返す
+/// 1回目：10、2回目：20、を出力
 coroutine test_coroutine() {
     let a: int = 10;
     print(a);

@@ -40,12 +40,18 @@ impl<'a> Lexer<'a> {
                 ';' => {self.push_token(TokenKind::Semicolon); self.next_char();},
                 ',' => {self.push_token(TokenKind::Comma); self.next_char();},
                 '.' => {self.push_token(TokenKind::Dot); self.next_char();}
-                '+' | '-' | '*' => {
+                '+' | '*' => {
                     match Arithmetic::from_str(&char.to_string()) {
                         Some(operator) => self.push_token(TokenKind::ArithmeticOperator(operator)),
                         _ => unreachable!(),
                     }
                     self.next_char();
+                },
+                '-' => {
+                    match self.lex_hyphen() {
+                        Ok(_) => {},
+                        Err(e) => self.errors.push(e),
+                    }
                 },
                 '/' => {
                     match self.lex_slash() {
@@ -130,6 +136,33 @@ impl<'a> Lexer<'a> {
         }
         self.next_char();   // 閉じる「"」をスキップ
         self.push_token(TokenKind::StringLiteral(string));
+        Ok(())
+    }
+
+    /// ハイフン記号の字句解析処理
+    fn lex_hyphen(&mut self) -> Result<(), ErrorContext> {
+        let start_row = self.row;
+        let start_col = self.col;
+        self.next_char();       // 最初の`-`をスキップ
+
+        let symbol = match self.peek_char()? {
+            '>' => "->",
+            _ => "-",
+        };
+
+        match symbol {
+            "->" => {
+                self.next_char();
+                self.push_token_with_location(TokenKind::RArrow, start_row, start_col);
+            },
+            "-" => {
+                match Arithmetic::from_str(symbol) {
+                    Some(operator) => self.push_token(TokenKind::ArithmeticOperator(operator)),
+                    _ => unreachable!(),
+                }
+            },
+            _ => unreachable!(),
+        }
         Ok(())
     }
 

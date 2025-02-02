@@ -26,6 +26,23 @@ pub enum ErrorCode {
     Parse005,
     /// 特定ブロック内でのみ使えるキーワード
     Parse006,
+
+    /// 意味解析エラー
+    Semantic001,
+    /// 異なる型の演算
+    Semantic002,
+    /// 想定外のノード
+    Semantic003,
+    /// 定義されていない関数の呼び出し
+    Semantic004,
+    /// 戻り値の型が定義されていない
+    Semantic005,
+    /// 不正な変数代入
+    Semantic006,
+    /// 定義されていない変数の呼び出し
+    Semantic007,
+    /// 引数の個数の不一致
+    Semantic008,
     
     /// 実行時エラー
     Runtime001,
@@ -85,6 +102,14 @@ impl ErrorCode {
             Self::Parse004 => "PARSE004",
             Self::Parse005 => "PARSE005",
             Self::Parse006 => "PARSE006",
+            Self::Semantic001 => "SEMANTIC001",
+            Self::Semantic002 => "SEMANTIC002",
+            Self::Semantic003 => "SEMANTIC003",
+            Self::Semantic004 => "SEMANTIC004",
+            Self::Semantic005 => "SEMANTIC005",
+            Self::Semantic006 => "SEMANTIC006",
+            Self::Semantic007 => "SEMANTIC007",
+            Self::Semantic008 => "SEMANTIC008",
             Self::Runtime001 => "RUNTIME001",
             Self::Runtime002 => "RUNTIME002",
             Self::Runtime003 => "RUNTIME003",
