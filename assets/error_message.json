@@ -17,11 +17,12 @@
     "SEMANTIC001": "意味解析エラー:\n {message}",
     "SEMANTIC002": "異なる型の演算: {left} {operator} {right}",
     "SEMANTIC003": "想定外のノード: {node}",
-    "SEMANTIC004": "定義されていない関数の呼び出し: {function_name}",
+    "SEMANTIC004": "定義されていない{statement}の呼び出し: {name}",
     "SEMANTIC005": "戻り値の型が定義されていない: {function_name}",
     "SEMANTIC006": "不正な変数代入: {variable_name}\n {variable_type} {value_type}",
     "SEMANTIC007": "定義されていない変数の呼び出し: {variable_name}",
     "SEMANTIC008": "引数の個数の不一致（期待: {parameter}, 取得: {argument}）\n 関数名: {name}",
+
 
     "RUNTIME001": "実行エラー:\n {message}",
     "RUNTIME002": "未定義の関数: {function}",

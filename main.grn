@@ -19,12 +19,15 @@ function main() {
 
     coro task1 = test_coroutine();
     coro task2 = test_coroutine();
+    coro task3 = background_task();
+    resume task3;
     resume task1;
     print("A");
     resume task2;
     resume task1;
     print("B");
     resume task2;
+    resume task3;
 }
 
 /// return句を試すための関数
@@ -77,4 +80,13 @@ coroutine test_coroutine() {
     print(a);
     yield;
     print(a+10);
+}
+
+coroutine background_task() {
+    /// @process aaaと表示
+    let a: string = "aaa";
+    print(a);
+    yield;
+    /// @process AAAと表示
+    print("AAA");
 }

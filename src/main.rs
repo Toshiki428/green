@@ -51,8 +51,8 @@ fn main() -> Result<(), String> {
         return Err("error".to_string())
     }
 
-    match semantic::semantic(&ast) {
-        Ok(_) => {},
+    let semantic = match semantic::semantic(&ast) {
+        Ok(semantic) => semantic,
         Err(errors) => {
             for error in errors {
                 let error_msg = ErrorMessage::global().get_error_message(error)?;
@@ -63,7 +63,7 @@ fn main() -> Result<(), String> {
     };
 
     if cli.analyze {
-        let _ = JsonData::new(ast);
+        let _ = JsonData::new(semantic);
     } else {
         if let Err(e) = execute::execute(&ast) {
             return Err(ErrorMessage::global().get_error_message(

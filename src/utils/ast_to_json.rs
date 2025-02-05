@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
-use crate::parser::node::*;
+use crate::{analyzer::semantic::Semantic, parser::node::*};
 use std::{
     fs::File,
     io::Write,
@@ -13,32 +13,33 @@ pub struct JsonData {
     structures: HashMap<String, Vec<Data>>,
 }
 impl JsonData {
-    pub fn new(ast: RootNode) {
+    pub fn new(semantic: Semantic) {
         let mut json_data = Self {
             definitions: Vec::new(),
             structures: HashMap::new(),
         };
 
-        let _ = json_data.ast_to_json(ast);
+        let _ = json_data.ast_to_json(semantic);
     }
 
-    pub fn ast_to_json(&mut self, ast: RootNode) -> serde_json::Result<()> {    
-        match ast {
-            RootNode { functions, coroutines } => {
-                for FunctionDefinitionNode { name, parameters:_, return_type:_, block , doc} in functions {
-                    self.definitions.push(Definition::new(&name, "function", &doc));
-                    let stack = AnalyzeAst::new(block);
-                    self.structures.insert(name, stack);
-                }
-    
-                for CoroutineDefinitionNode { name, block, doc } in coroutines {
-                    self.definitions.push(Definition::new(&name, "coroutine", &doc));
-                    let stack = AnalyzeAst::new(block);
-                    self.structures.insert(name, stack);
-                }
-            },
+    pub fn ast_to_json(&mut self, semantic: Semantic) -> serde_json::Result<()> {
+        for (_, function_info) in semantic.function_table.table {
+            if function_info.name == "print" {
+                continue;
+            }
+
+            self.definitions.push(Definition::new(&function_info.name, "function", &function_info.doc));
+            let stack = AnalyzeAst::new(function_info.process);
+            self.structures.insert(function_info.name, stack);
         }
-    
+
+        for (_, task) in semantic.task_table.table {
+            let coroutine = semantic.coroutine_table.get_coroutine_info(&task.coroutine_name).unwrap();
+            self.definitions.push(Definition::new(&task.task_name, "coroutine", &coroutine.doc));
+            let stack = AnalyzeAst::new(coroutine.process);
+            self.structures.insert(task.task_name, stack);
+        }
+
         // シリアライズ
         let serialized = serde_json::to_string_pretty(&self)?;
     
@@ -57,11 +58,7 @@ struct Definition {
     doc: String,
 }
 impl Definition {
-    fn new(name: &str, r#type: &str, doc: &Option<String>) -> Self {
-        let doc = match doc {
-            Some(doc) => doc,
-            None => "",
-        };
+    fn new(name: &str, r#type: &str, doc: &str) -> Self {
         Self { name: name.to_string(), r#type: r#type.to_string(), doc: doc.to_string() }
     }
 }
@@ -94,11 +91,11 @@ impl AnalyzeAst {
 
     fn analyze_block(&mut self, block: BlockNode) {
         for statement in block.statements {
-            self.analyze_ast(statement);
+            self.analyze_node(statement);
         }
     }
 
-    fn analyze_ast(&mut self, ast: PrivateNode) {
+    fn analyze_node(&mut self, ast: PrivateNode) {
         match ast {
             PrivateNode::IfStatement { condition_node:_, then_block, else_block } => {
                 self.analyze_block(then_block);
@@ -112,18 +109,29 @@ impl AnalyzeAst {
 
             PrivateNode::VariableDeclaration { name:_, variable_type:_, initializer, doc:_ } => {
                 if let Some(ini) = initializer {
-                    self.analyze_ast(*ini);
+                    self.analyze_node(*ini);
                 }
             },
             PrivateNode::VariableAssignment { name:_, expression } => {
-                self.analyze_ast(*expression);
+                self.analyze_node(*expression);
             },
 
-            PrivateNode::CoroutineInstantiation { task_name:_, coroutine_name:_ } => {
-                // あとで
+            PrivateNode::CoroutineInstantiation { task_name:_, coroutine_name:_ } => {},
+            PrivateNode::CoroutineResume { task_name } => {
+                self.stack.push(Data::new(
+                    "task_resume",
+                    serde_json::json!({
+                        "target": &task_name,
+                    }),
+                ));
             },
-            PrivateNode::CoroutineResume { task_name:_ } => {
-                // あとで
+            PrivateNode::Yield => {
+                self.stack.push(Data::new(
+                    "yield",
+                    serde_json::json!({
+                        "target": "main",
+                    }),
+                ));
             },
 
             PrivateNode::FunctionCall { name, arguments, return_flg:_ } => {
@@ -137,7 +145,7 @@ impl AnalyzeAst {
                 }
 
                 for arg in arguments {
-                    self.analyze_ast(arg);
+                    self.analyze_node(arg);
                 }
             },
             

@@ -1,11 +1,12 @@
 use crate::{common::types::{LiteralValue, Type}, error::{error_code::ErrorCode, error_context::ErrorContext}, parser::node::*};
 
-use super::{coroutine_table::CoroutineTable, function_table::FunctionTable, variable_table::VariableTable};
+use super::{coroutine_table::CoroutineTable, function_table::FunctionTable, task_table::TaskTable, variable_table::VariableTable};
 
-struct Semantic {
+pub struct Semantic {
     pub function_table: FunctionTable,
     pub variable_table: VariableTable,
     pub coroutine_table: CoroutineTable,
+    pub task_table: TaskTable,
     pub errors: Vec<ErrorContext>,
 
     analysis_name: String,
@@ -16,6 +17,7 @@ impl Semantic {
             function_table: FunctionTable::new(),
             variable_table: VariableTable::new(),
             coroutine_table: CoroutineTable::new(),
+            task_table: TaskTable::new(),
             errors: Vec::new(),
 
             analysis_name: "".to_string(),
@@ -26,12 +28,12 @@ impl Semantic {
     fn semantic(&mut self, ast: &RootNode) {
         let RootNode { functions, coroutines } = ast.clone();
 
-        for FunctionDefinitionNode { name, parameters, return_type, block:_, doc:_ } in &functions {
-            self.function_table.function_definition(name, parameters, return_type, false);
+        for FunctionDefinitionNode { name, parameters, return_type, block, doc } in &functions {
+            self.function_table.function_definition(name, doc.as_deref(), parameters, return_type, false, block);
         }
 
-        for CoroutineDefinitionNode { name, block:_, doc:_ } in &coroutines {
-            self.coroutine_table.coroutine_definition(name);
+        for CoroutineDefinitionNode { name, block, doc} in &coroutines {
+            self.coroutine_table.coroutine_definition(name, doc.as_deref(), block);
         }
 
         for FunctionDefinitionNode { name, parameters:_, return_type:_, block, doc:_ } in functions {
@@ -85,8 +87,25 @@ impl Semantic {
                 }
             },
             PrivateNode::Continue => {},
-            PrivateNode::CoroutineInstantiation { task_name:_, coroutine_name:_ } => {},
-            PrivateNode::CoroutineResume { task_name:_ } => {},
+            PrivateNode::CoroutineInstantiation { task_name, coroutine_name} => {
+                if let Some(coroutine_info) = self.coroutine_table.get_coroutine_info(coroutine_name) {
+                    self.task_table.add_task(task_name, coroutine_name, &coroutine_info.process);
+                } else {
+                    self.errors.push(
+                        ErrorContext::new(
+                            ErrorCode::Semantic004,
+                            None, None,
+                            vec![
+                                ("statement", "コルーチン"),
+                                ("name", coroutine_name),
+                            ],
+                        )
+                    );
+                }
+            },
+            PrivateNode::CoroutineResume { task_name } => {
+                self.task_table.get_task(task_name);
+            },
             PrivateNode::Error => {},
             PrivateNode::FunctionCall { name, arguments, return_flg } => {
                 match self.function_table.get_function_info(&name) {
@@ -287,7 +306,7 @@ impl Semantic {
             PrivateNode::VariableDeclaration { name, variable_type, initializer, doc:_ } => {
                 if let Some(function_info) = self.function_table.get_function_info_mut(&self.analysis_name) {
                     function_info.local_variables.variable_declare(name, variable_type);
-                } else if let Some(coroutine_info) = self.coroutine_table.get_function_info_mut(&self.analysis_name) {
+                } else if let Some(coroutine_info) = self.coroutine_table.get_coroutine_info_mut(&self.analysis_name) {
                     coroutine_info.local_variables.variable_declare(name, variable_type);
                 } else {
                     println!("関数名: {}", self.analysis_name);
@@ -383,17 +402,12 @@ impl Semantic {
     }
 }
 
-pub fn semantic(ast: &RootNode) -> Result<(), Vec<ErrorContext>> {
+pub fn semantic(ast: &RootNode) -> Result<Semantic, Vec<ErrorContext>> {
     let mut semantic = Semantic::new();
     semantic.semantic(&ast);
 
-    dbg!(&semantic.errors);
-    dbg!(&semantic.function_table);
-    dbg!(&semantic.coroutine_table);
-    dbg!(&semantic.variable_table);
-
     if semantic.errors.is_empty() {
-        return Ok(())
+        return Ok(semantic)
     }
     else {
         return Err(semantic.errors)

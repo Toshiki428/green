@@ -33,7 +33,7 @@ pub enum ErrorCode {
     Semantic002,
     /// 想定外のノード
     Semantic003,
-    /// 定義されていない関数の呼び出し
+    /// 定義されていない関数、コルーチンの呼び出し
     Semantic004,
     /// 戻り値の型が定義されていない
     Semantic005,
