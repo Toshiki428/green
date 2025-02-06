@@ -1,4 +1,5 @@
 use std::{iter::Peekable, vec::IntoIter};
+use regex::Regex;
 use super::node::*;
 use crate::{
     common::{
@@ -1040,8 +1041,9 @@ impl Parser {
     fn parse_doc_comment(&mut self, token: &Token) -> Result<Option<PrivateNode>, ErrorContext> {
         if let TokenKind::DocComment(string) = &token.kind {
             self.next_token()?;
-            if string.starts_with("@process") {
-                let mut process_comment = string.to_string();
+            let re = Regex::new(r"@process(.*)").unwrap();
+            if let Some(cap) = re.captures(string) {
+                let mut process_comment = cap[1].trim().to_string();
                 while let TokenKind::DocComment(string) = self.peek_token()?.kind {
                     process_comment = format!("{}\n{}", process_comment, string);
                     self.next_token()?;
