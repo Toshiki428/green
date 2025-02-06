@@ -19,6 +19,7 @@ impl VariableScope {
         }
     }
 
+    /// 変数定義
     pub fn variable_declare(&mut self, name: &str, var_type: &Type) {
         self.variable_info.push(
             VariableInfo {

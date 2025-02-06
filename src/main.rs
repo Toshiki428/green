@@ -62,10 +62,12 @@ fn main() -> Result<(), String> {
         }
     };
 
+    // dbg!(&semantic);
+
     if cli.analyze {
         let _ = JsonData::new(semantic);
     } else {
-        if let Err(e) = execute::execute(&ast) {
+        if let Err(e) = execute::execute(&semantic) {
             return Err(ErrorMessage::global().get_error_message(
                 ErrorContext::new(
                     ErrorCode::Runtime001,

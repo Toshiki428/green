@@ -28,6 +28,8 @@ function main() {
     print("B");
     resume task2;
     resume task3;
+    coro aaa = aaa();
+    resume aaa;
 }
 
 /// return句を試すための関数
@@ -87,6 +89,14 @@ coroutine background_task() {
     let a: string = "aaa";
     print(a);
     yield;
+    /// @process AAAと表示
+    print("AAA");
+}
+
+coroutine aaa() {
+    /// @process aaaと表示
+    let a: string = "aaa";
+    print(a);
     /// @process AAAと表示
     print("AAA");
 }

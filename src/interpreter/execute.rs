@@ -1,17 +1,11 @@
-use super::{
-    coroutine::{CoroutineManager, CoroutineStatus}, function::FunctionManager, variable::VariableManager
-};
+use super::variable::VariableManager;
 use crate::{
-    common::{
+    analyzer::{semantic::Semantic, task_table::TaskStatus}, common::{
         operator::{ Arithmetic, BinaryLogical, Comparison, Logical, UnaryLogical},
         types::{GreenValue, LiteralValue, Type},
-    },
-    parser::node::*,
-    error::{
-        error_message::ErrorMessage,
-        error_code::ErrorCode,
-        error_context::ErrorContext,
-    },
+    }, error::{
+        error_code::ErrorCode, error_context::ErrorContext, error_message::ErrorMessage
+    }, parser::node::*
 };
 
 #[derive(Debug)]
@@ -24,37 +18,20 @@ pub enum EvalFlow<T> {
 
 struct Interpreter {
     variable_manager: VariableManager,
-    functions: FunctionManager,
-    coroutine_manager: CoroutineManager,
+    manager: Semantic,
 }
 
 impl Interpreter {
-    fn new() -> Self {
+    fn new(semantic: &Semantic) -> Self {
         Self {
             variable_manager: VariableManager::new(),
-            functions: FunctionManager::new(),
-            coroutine_manager: CoroutineManager::new(),
+            manager: semantic.clone(),
         }
     }
 
-    fn execute_program(&mut self, node: &RootNode) -> Result<(), String> {
-        let RootNode { functions, coroutines } = node;
-        for function in functions {
-            let FunctionDefinitionNode {name, parameters, return_type:_, block, doc:_} = function;
-            let mut params = Vec::new();
-            for ParameterNode { name, variable_type } in parameters {
-                params.push((name.to_string(), variable_type.clone()));
-            }
-            self.functions.add_def(name, params, block);
-        }
-
-        for coroutine in coroutines {
-            let CoroutineDefinitionNode { name, block, doc:_ } = coroutine;
-            self.coroutine_manager.add_def(name, block);
-        }
-        
-        if let Some(function_def) = self.functions.get_function("main").cloned() {
-            self.execute(&function_def.process)?;
+    fn execute_program(&mut self) -> Result<(), String> {
+        if let Some(function_info) = self.manager.function_table.get_function_info("main") {
+            self.execute(&function_info.process)?;
         } else {
             return Err(ErrorMessage::global().get_error_message(
                 ErrorContext::new(
@@ -114,20 +91,20 @@ impl Interpreter {
                 return Ok(EvalFlow::Return(return_value));
             },
 
-            PrivateNode::CoroutineInstantiation { task_name, coroutine_name } => {
-                match self.coroutine_manager.add_task(task_name, coroutine_name) {
-                    Ok(_) => {},
-                    Err(e) => return Err(ErrorMessage::global().get_error_message(e)?),
-                }
+            PrivateNode::CoroutineInstantiation { task_name:_, coroutine_name:_ } => {
+                // match self.manager.coroutine_table.add_task(task_name, coroutine_name) {
+                //     Ok(_) => {},
+                //     Err(e) => return Err(ErrorMessage::global().get_error_message(e)?),
+                // }
             },
             PrivateNode::CoroutineResume { task_name } => {
-                let mut task = match self.coroutine_manager.get_task(task_name) {
-                    Ok(task) => task,
-                    Err(e) => return Err(ErrorMessage::global().get_error_message(e)?),
+                let mut task = match self.manager.task_table.get_task(task_name) {
+                    Some(task) => task,
+                    None => panic!("見つからない"),
                 };
 
                 match &task.status {
-                    CoroutineStatus::Completed => {
+                    TaskStatus::Completed => {
                         return Err(ErrorMessage::global().get_error_message(
                             ErrorContext::new(
                                 ErrorCode::Runtime020,
@@ -136,17 +113,17 @@ impl Interpreter {
                             )
                         )?)
                     },
-                    CoroutineStatus::Ready | CoroutineStatus::Paused => {
-                        task.status = CoroutineStatus::Running;
+                    TaskStatus::Ready | TaskStatus::Paused => {
+                        task.status = TaskStatus::Running;
                     },
-                    CoroutineStatus::Running => {
+                    TaskStatus::Running => {
                         panic!("今のところ存在しないエラー")
                     },
                 }
 
                 loop {
-                    if matches!(task.status, CoroutineStatus::Completed) {
-                        self.coroutine_manager.set_task(task_name, task);
+                    if matches!(task.status, TaskStatus::Completed) {
+                        self.manager.task_table.set_task(task_name, task);
                         break;
                     }
                     let index = task.current_position;
@@ -154,8 +131,8 @@ impl Interpreter {
                     match node {
                         PrivateNode::Yield => {
                             task.step();
-                            task.status = CoroutineStatus::Paused;
-                            self.coroutine_manager.set_task(task_name, task);
+                            task.status = TaskStatus::Paused;
+                            self.manager.task_table.set_task(task_name, task);
                             break;
                         },
                         _ => {
@@ -199,26 +176,13 @@ impl Interpreter {
                 match name.as_str() {
                     "print" => self.print_function(arguments)?,
                     _ => {
-                        if let Some(function_def) = self.functions.get_function(name).cloned() {
-                            if function_def.parameters.len() != arguments.len() {
-                                return Err(ErrorMessage::global().get_error_message(
-                                    ErrorContext::new(
-                                        ErrorCode::Runtime012, 
-                                        None, None,
-                                        vec![
-                                            ("parameters", &function_def.parameters.len().to_string()),
-                                            ("arguments", &arguments.len().to_string()),
-                                            ("name", name),
-                                        ],
-                                    )
-                                )?);
-                            }
+                        if let Some(function_info) = self.manager.function_table.get_function_info(name) {
                             self.variable_manager.push_scope();
 
                             let values = self.evaluate_argument(arguments)?;
-                            for ((param_name, param_type), value) in function_def.parameters.into_iter().zip(values.into_iter()) {
-                                if param_type == value.value_type {
-                                    self.variable_manager.set_variable(&param_name, &value);
+                            for (param, value) in function_info.parameters.into_iter().zip(values.into_iter()) {
+                                if param.variable_type == value.value_type {
+                                    self.variable_manager.set_variable(&param.name, &value);
                                 }
                                 else {
                                     return Err(ErrorMessage::global().get_error_message(
@@ -226,17 +190,17 @@ impl Interpreter {
                                             ErrorCode::Runtime013,
                                             None, None,
                                             vec![
-                                                ("parameter", &param_type.to_string()),
+                                                ("parameter", &param.variable_type.to_string()),
                                                 ("argument", &value.value_type.to_string()),
                                                 ("function_name", name),
-                                                ("param_name", &param_name),
+                                                ("param_name", &param.name),
                                             ],
                                         )
                                     )?)
                                 }
                             }
 
-                            let result = self.execute(&function_def.process)?;
+                            let result = self.execute(&function_info.process)?;
                             match result {
                                 EvalFlow::Return(value) => {
                                     self.variable_manager.pop_scope();
@@ -630,8 +594,8 @@ impl Interpreter {
 
 }
 
-pub fn execute(node: &RootNode) -> Result<(), String> {
-    let mut interpreter = Interpreter::new();
-    interpreter.execute_program(node)?;
+pub fn execute(semantic: &Semantic) -> Result<(), String> {
+    let mut interpreter = Interpreter::new(semantic);
+    interpreter.execute_program()?;
     Ok(())
 }

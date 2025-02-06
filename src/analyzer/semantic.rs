@@ -2,13 +2,14 @@ use crate::{common::types::{LiteralValue, Type}, error::{error_code::ErrorCode, 
 
 use super::{coroutine_table::CoroutineTable, function_table::FunctionTable, task_table::TaskTable, variable_table::VariableTable};
 
+#[derive(Debug, Clone)]
 pub struct Semantic {
     pub function_table: FunctionTable,
     pub variable_table: VariableTable,
     pub coroutine_table: CoroutineTable,
     pub task_table: TaskTable,
-    pub errors: Vec<ErrorContext>,
-
+    
+    errors: Vec<ErrorContext>,
     analysis_name: String,
 }
 impl Semantic {

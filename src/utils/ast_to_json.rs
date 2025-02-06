@@ -28,14 +28,14 @@ impl JsonData {
                 continue;
             }
 
-            self.definitions.push(Definition::new(&function_info.name, "function", &function_info.doc));
+            self.definitions.push(Definition::new(&function_info.name, "function", &function_info.doc, ""));
             let stack = AnalyzeAst::new(function_info.process);
             self.structures.insert(function_info.name, stack);
         }
 
         for (_, task) in semantic.task_table.table {
             let coroutine = semantic.coroutine_table.get_coroutine_info(&task.coroutine_name).unwrap();
-            self.definitions.push(Definition::new(&task.task_name, "coroutine", &coroutine.doc));
+            self.definitions.push(Definition::new(&task.task_name, "coroutine", &coroutine.doc, &coroutine.name));
             let stack = AnalyzeAst::new(coroutine.process);
             self.structures.insert(task.task_name, stack);
         }
@@ -56,10 +56,11 @@ struct Definition {
     name: String,
     r#type: String,
     doc: String,
+    r#ref: String,
 }
 impl Definition {
-    fn new(name: &str, r#type: &str, doc: &str) -> Self {
-        Self { name: name.to_string(), r#type: r#type.to_string(), doc: doc.to_string() }
+    fn new(name: &str, r#type: &str, doc: &str, r#ref: &str) -> Self {
+        Self { name: name.to_string(), r#type: r#type.to_string(), doc: doc.to_string(), r#ref: r#ref.to_string() }
     }
 }
 
