@@ -231,45 +231,83 @@ impl Semantic {
             PrivateNode::ProcessComment { comment:_ } => {},
             PrivateNode::ReturnStatement { assignalbe:_ } => {},
             PrivateNode::Variable { name } => {
-                let function_info = match self.function_table.get_function_info(&self.analysis_name) {
-                    Some(function_info) => function_info,
-                    None => panic!("解析中の関数が存在しない"),
+                match self.function_table.get_function_info(&self.analysis_name) {
+                    Some(function_info) => {
+                        match function_info.local_variables.get_type(name) {
+                            Some(variable_type) => return Some(variable_type),
+                            None => {
+                                self.errors.push(
+                                    ErrorContext::new(
+                                        ErrorCode::Semantic007,
+                                        None, None,
+                                        vec![("variable_name", name)],
+                                    )
+                                );
+                                return None
+                            }
+                        }
+                    },
+                    None => {},
                 };
 
-                match function_info.local_variables.get_type(name) {
-                    Some(variable_type) => return Some(variable_type),
-                    None => {
-                        self.errors.push(
-                            ErrorContext::new(
-                                ErrorCode::Semantic007,
-                                None, None,
-                                vec![("variable_name", name)],
-                            )
-                        );
-                        return None
-                    }
-                }
+                match self.coroutine_table.get_coroutine_info(&self.analysis_name) {
+                    Some(coroutine_info) => {
+                        match coroutine_info.local_variables.get_type(name) {
+                            Some(variable_type) => return Some(variable_type),
+                            None => {
+                                self.errors.push(
+                                    ErrorContext::new(
+                                        ErrorCode::Semantic007,
+                                        None, None,
+                                        vec![("variable_name", name)],
+                                    )
+                                );
+                                return None
+                            }
+                        }
+                    },
+                    None => panic!("関数、コルーチンが見つからない"),
+                };
             },
             PrivateNode::VariableAssignment { name, expression } => {
-                let function_info = match self.function_table.get_function_info(&self.analysis_name) {
-                    Some(function_info) => function_info,
-                    None => panic!("解析中の関数が存在しない"),
-                };
-                
-                let variable_type = match function_info.local_variables.get_type(name) {
-                    Some(variable_type) => variable_type,
+                let variable_type = match self.function_table.get_function_info(&self.analysis_name) {
+                    Some(function_info) => {
+                        match function_info.local_variables.get_type(name) {
+                            Some(variable_type) => variable_type,
+                            None => {
+                                self.errors.push(
+                                    ErrorContext::new(
+                                        ErrorCode::Semantic007,
+                                        None, None,
+                                        vec![("variable_name", name)],
+                                    )
+                                );
+                                return None
+                            },
+                        }
+                    },
                     None => {
-                        self.errors.push(
-                            ErrorContext::new(
-                                ErrorCode::Semantic007,
-                                None, None,
-                                vec![("variable_name", name)],
-                            )
-                        );
-                        return None
+                        match self.coroutine_table.get_coroutine_info(&self.analysis_name) {
+                            Some(coroutine_info) => {
+                                match coroutine_info.local_variables.get_type(name) {
+                                    Some(variable_type) => variable_type,
+                                    None => {
+                                        self.errors.push(
+                                            ErrorContext::new(
+                                                ErrorCode::Semantic007,
+                                                None, None,
+                                                vec![("variable_name", name)],
+                                            )
+                                        );
+                                        return None
+                                    },
+                                }
+                            },
+                            None => panic!("関数、コルーチンが存在しない。")
+                        }
                     },
                 };
-
+                
                 match self.semantic_statement(&expression) {
                     Some(value_type) if value_type == variable_type => {
                         return Some(value_type)
@@ -311,7 +349,7 @@ impl Semantic {
                     coroutine_info.local_variables.variable_declare(name, variable_type);
                 } else {
                     println!("関数名: {}", self.analysis_name);
-                    panic!("解析中の関数が存在しない");
+                    panic!("解析中の関数が存在しないC");
                 };
                 
                 if let Some(node) = initializer {

@@ -1,67 +1,54 @@
 # Green言語
 
-## To Do
-- 型チェックを入れる（今は`int`変数に`string`などが入る）
+## 基本型
+- `int`：整数
+- `float`：浮動小数点
+- `string`：文字列
+- `bool`：真偽値
 
-## 構文
-```txt
-<program> ::= <function_definition> | <coroutine_definition>
-<function_definition> = "function" <function_name> "(" ((<variable> ":" <type> "," )* <variable> ":" <type>)? ")" <function_block>
-<coroutine_definition> ::= "coroutine" <function_name> "(" ")" <coroutine_block>
-<coroutine_block> ::= "{" <statements> "yield;" "}"
-<function_block> ::= "{" <statements> ("return" <assignable> ";")* "}"
+## 基本構文
 
-<statements> ::= <statement> | <statements> <statement>
-<statement> ::= <function_call> | <variable_declaration> | <if_statement> | <while_statement>
-<if_statement> ::= "if" "(" <assignable> ")" <block> [ "else" <block> ]
-<while_statement> ::= "while" "(" <assignable> ")" <loop_block>
-<block> ::= "{" <statements> "}"
-<loop_block> ::= "{" <statements> ("continue" ";" | "break" ";")* "}"
-<function_call> ::= <function_name> "(" <argument> ")"
-<argument> ::= <assignable>
-<variable_declaration> ::= "let " <variable> ":" <type> "=" <assignable>
-<type> ::= "int" | "float" | "string" | "bool"
-<assignable> ::= <expression> | <literal> | <function_call>
-<literal> ::= <bool> | <string> | <number>
-<expression> ::= <logical> | <compare> | <add_and_sub> | <mul_and_div> | <unary> | <variable>
-<logical> ::= <or_expr> | <and_expr> | <not_expr>
-<or_expr> ::= <and_expr> ("or" <and_expr>)?
-<and_expr> ::= <not_expr> ("and" <not_expr>)?
-<not_expr> ::= ("not")? (<bool> | <compare> | "(" <logical> ")" )
-<compare> ::= <value> (("==" | "!=" | ">=" | "<=" | ">" | "<") <value>)?
-<value> ::= <add_and_sub> | <string>
-<add_and_sub> ::= <mul_and_div> (("+" | "-") <mul_and_div>)*
-<mul_and_div> ::= <unary> (("*" | "/") <unary>)*
-<unary> ::= <primary> | "-" <primary>
-<primary> ::= <number> | "(" <add_and_sub> ")" | <variable>
-<function_name> ::= [a-zA-Z_][a-zA-Z0-9_]*
-<variable> ::= [a-zA-Z_][a-zA-Z0-9_]*
-<string> ::= "\"" [a-zA-Z0-9 ]* "\""
-<number> ::= [0-9]+
-<bool> ::= "true" | "false"
+### 変数定義
+```grn
+let a: int = 10;
 ```
 
-演算の優先度
-```
-カッコ内 > 掛け算割り算 > 足し算引き算 > 比較演算 
-> Not > and xor > or > 代入演算子
+### 条件分岐
+```grn
+let a : int = 10;
+if (a >= 10 and a < 20) {
+  print("OK");
+}
+else {
+  print("NG");
+}
 ```
 
-## エラーコード
-```
-[カテゴリコード][番号]
+### ループ
+```grn
+let i: int = 0;
+while (i < 10) {
+  print("a");
+  i = i+1;
+}
 ```
 
-- `[カテゴリコード]`
-  - CMD
-  - FILE
-  - SYNTAX
-  - RUNTIME
-  - ALL
+### 関数定義
+```grn
+// 戻り値なしの場合
+function print_sum(first: int, second: int) {
+  print(first + second);
+}
 
-## コルーチンの書き方
+// 戻り値ありの場合
+function sum(first: int, second: int) -> int {
+  return first + second;
+}
 ```
-coroutine name() {
+
+### コルーチン定義
+```
+coroutine print_alpha() {
   print("A");
   yield;
   print("B");
@@ -69,23 +56,34 @@ coroutine name() {
   print("C");
 }
 
-coro task = name();
-print(1);
+coro task = print_alpha();
 resume task;
-print(2);
 resume task;
-print(3);
 resume task;
-print(4);
 ```
 
-出力結果
+### コメント
+```grn
+// 行コメント
+/*
+ブロックコメント
+*/
 ```
-1
-A
-2
-B
-3
-C
-4
+
+- `Docコメント`
+  - 変数、関数、コルーチン定義の前に書いたコメントが情報として保存される
+  - `@process`と頭につけたDocコメントブロックは、シーケンス図上に表示することができる
+
+```grn
+/// カウント用の変数
+let count: int = 0;
 ```
+
+```grn
+/// @process 10回ループ
+```
+
+## ToDo
+- 配列を追加
+- forループを追加
+- 型推論

@@ -54,7 +54,7 @@ impl Interpreter {
                 EvalFlow::Normal => {},
             }
         }
-                
+
         Ok(EvalFlow::Normal)
     }
 
@@ -89,6 +89,10 @@ impl Interpreter {
             PrivateNode::ReturnStatement { assignalbe } => {
                 let return_value = self.evaluate_assignable(assignalbe)?;
                 return Ok(EvalFlow::Return(return_value));
+            },
+
+            PrivateNode::Yield => {
+
             },
 
             PrivateNode::CoroutineInstantiation { task_name:_, coroutine_name:_ } => {
@@ -137,7 +141,7 @@ impl Interpreter {
                         },
                         _ => {
                             self.statement(node)?;
-                            task.step();                            
+                            task.step();
                         },
                     }
                 }

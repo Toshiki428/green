@@ -4,19 +4,19 @@ use crate::{analyzer::semantic::Semantic, parser::node::*};
 use std::{
     fs::File,
     io::Write,
-    collections::HashMap,
+    collections::BTreeMap,
 };
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct JsonData {
     definitions: Vec<Definition>,
-    structures: HashMap<String, Vec<Data>>,
+    structures: BTreeMap<String, Vec<Data>>,
 }
 impl JsonData {
     pub fn new(semantic: Semantic) {
         let mut json_data = Self {
             definitions: Vec::new(),
-            structures: HashMap::new(),
+            structures: BTreeMap::new(),
         };
 
         let _ = json_data.ast_to_json(semantic);

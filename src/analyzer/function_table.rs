@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use crate::{common::types::{BlockType, Type}, parser::node::{BlockNode, ParameterNode}};
 use super::variable_table::VariableScope;
 
@@ -29,12 +29,12 @@ pub struct FunctionInfo {
 
 #[derive(Debug, Clone)]
 pub struct FunctionTable {
-    pub table: HashMap<String, FunctionInfo>,
+    pub table: BTreeMap<String, FunctionInfo>,
 }
 impl FunctionTable {
     pub fn new() -> Self {
         let mut table = Self {
-            table: HashMap::new(),
+            table: BTreeMap::new(),
         };
         table.function_definition(
             "print",
