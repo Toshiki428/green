@@ -14,6 +14,12 @@ pub enum TaskStatus {
 }
 
 #[derive(Debug, Clone)]
+pub struct ExecutionFrame {
+    pub nodes: Vec<PrivateNode>,
+    pub position: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct CoroutineTask {
     pub task_name: String,
     pub coroutine_name: String,
