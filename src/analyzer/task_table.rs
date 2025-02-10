@@ -1,5 +1,5 @@
 use crate::parser::node::{BlockNode, PrivateNode};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub enum TaskStatus {
@@ -43,12 +43,12 @@ impl CoroutineTask {
 
 #[derive(Debug, Clone)]
 pub struct TaskTable {
-    pub table: HashMap<String, CoroutineTask>,
+    pub table: BTreeMap<String, CoroutineTask>,
 }
 impl TaskTable {
     pub fn new() -> Self {
         Self {
-            table: HashMap::new(),
+            table: BTreeMap::new(),
         }
     }
 

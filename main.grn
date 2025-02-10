@@ -1,92 +1,34 @@
 function main() {
-    /// カウント用の変数
-    /// int型
-    let i: int = 0;
-    /// @process 10回繰り返す
-    while (i < 10) {
-        print(i);
-        i = i+1;
+    /// @process サーバにデータ送信
+    sendData("Hello, server!");
+}
+
+function sendData(data: string) {
+    /// @process 送信データをシリアライズ
+    let raw_data: string = "Hello, server!";
+    let serialized_data: string = serializeData(raw_data);
+
+    /// @process サーバと接続確立
+    let is_connented: bool = tryConnection();
+    if (is_connented) {
+        /// @process データ送信
+        transmitData(serialized_data);
     }
-
-    print(test_return(15, 0));
-    print(test_return(15, 1));
-
-    print(test_break(15, 0));
-    print(test_break(15, 1));
-
-    print(test_continue(15, 0));
-    print(test_continue(15, 1));
-
-    coro task1 = test_coroutine();
-    coro task2 = test_coroutine();
-    coro task3 = background_task();
-    resume task3;
-    resume task1;
-    print("A");
-    resume task2;
-    resume task1;
-    print("B");
-    resume task2;
-    resume task3;
 }
 
-/// return句を試すための関数
-function test_return(a: int, b:int) -> int {
-    let i: int = 0;
-    let sum: int = 0;
-    /// スキップされるはず
-    while (i < a) {
-        i = i + 1;
-        sum = sum + i;
-        if (b > 0 and i == 10) {
-            return sum;
-        }
-    }
-    return sum;
+function serializeData(raw_data: string) -> string {
+    /// @process データをシリアライズ
+    return raw_data;
 }
 
-function test_break(a: int, b: int) -> int {
-    let i: int = 0;
-    let sum: int = 0;
-    while (i < a) {
-        i = i + 1;
-        sum = sum + i;
-        if (b > 0 and i == 10) {
-            break;
-        }
-    }
-    return sum;
+function tryConnection() -> bool {
+    /// @process サーバと接続試行
+    return true;
 }
 
-function test_continue(a:int, b: int) -> int {
-    let i: int = 0;
-    let sum: int = 0;
-    while (i < a) {
-        i = i + 1;
-        sum = sum + i;
-        if (b > 0) {
-            continue;
-        }
-        sum = sum + i;
-    }
-
-    return sum;
+function transmitData(data: string) {
+    /// @process データを送信
+    print("データ送信完了:");
+    print(data);
 }
-
-/// コルーチン
-/// 1回目：10、2回目：20、を出力
-coroutine test_coroutine() {
-    let a: int = 10;
-    print(a);
-    yield;
-    print(a+10);
-}
-
-coroutine background_task() {
-    /// @process aaaと表示
-    let a: string = "aaa";
-    print(a);
-    yield;
-    /// @process AAAと表示
-    print("AAA");
-}
+ 

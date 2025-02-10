@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use crate::{
     common::types::{GreenValue, LiteralValue},
     error::{
@@ -8,13 +8,13 @@ use crate::{
 
 #[derive(Debug)]
 pub struct VariableManager {
-    scopes: Vec<HashMap<String, GreenValue>>,
+    scopes: Vec<BTreeMap<String, GreenValue>>,
 }
 
 impl VariableManager {
     pub fn new() -> Self {
         Self {
-            scopes: vec![HashMap::new()],
+            scopes: vec![BTreeMap::new()],
         }
     }
 
@@ -70,7 +70,7 @@ impl VariableManager {
     }
 
     pub fn push_scope(&mut self) {
-        self.scopes.push(HashMap::new());
+        self.scopes.push(BTreeMap::new());
     }
 
     pub fn pop_scope(&mut self) {

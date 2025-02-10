@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use crate::parser::node::BlockNode;
 
 use super::variable_table::VariableScope;
@@ -26,12 +26,12 @@ pub struct CoroutineInfo {
 
 #[derive(Debug, Clone)]
 pub struct CoroutineTable {
-    table: HashMap<String, CoroutineInfo>,
+    table: BTreeMap<String, CoroutineInfo>,
 }
 impl CoroutineTable {
     pub fn new() -> Self {
         Self {
-            table: HashMap::new(),
+            table: BTreeMap::new(),
         }
     }
 
